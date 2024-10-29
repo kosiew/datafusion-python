@@ -2140,7 +2140,7 @@ def first_value(
         expression: Argument to perform bitwise calculation on
         filter: If provided, only compute against rows for which the filter is True
         order_by: Set the ordering of the expression to evaluate
-        null_treatment: Assign whether to respect or ignull null values.
+        null_treatment: Assign whether to respect or ignore null values.
     """
     order_by_raw = sort_list_to_raw_sort_list(order_by)
     filter_raw = filter.expr if filter is not None else None
@@ -2172,7 +2172,7 @@ def last_value(
         expression: Argument to perform bitwise calculation on
         filter: If provided, only compute against rows for which the filter is True
         order_by: Set the ordering of the expression to evaluate
-        null_treatment: Assign whether to respect or ignull null values.
+        null_treatment: Assign whether to respect or ignore null values.
     """
     order_by_raw = sort_list_to_raw_sort_list(order_by)
     filter_raw = filter.expr if filter is not None else None
@@ -2206,7 +2206,7 @@ def nth_value(
         n: Index of value to return. Starts at 1.
         filter: If provided, only compute against rows for which the filter is True
         order_by: Set the ordering of the expression to evaluate
-        null_treatment: Assign whether to respect or ignull null values.
+        null_treatment: Assign whether to respect or ignore null values.
     """
     order_by_raw = sort_list_to_raw_sort_list(order_by)
     filter_raw = filter.expr if filter is not None else None
