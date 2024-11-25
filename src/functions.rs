@@ -10,8 +10,8 @@
 //
 // Unless required by applicable law or agreed to in writing,
 // software distributed under the License is distributed on an
-// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS
-// OF ANY KIND, either express or implied.  See the License for the
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
 
@@ -554,7 +554,6 @@ expr_fn!(date_part, part date);
 expr_fn!(date_trunc, part date);
 expr_fn!(date_bin, stride source origin);
 expr_fn!(make_date, year month day);
-expr_fn!(extract, part date);
 
 expr_fn!(translate, string from to, "Replaces each character in string that matches a character in the from set with the corresponding character in the to set. If from is longer than to, occurrences of the extra characters in from are deleted.");
 expr_fn_vec!(trim, "Removes the longest string containing only characters in characters (a space by default) from the start, end, or both ends (BOTH is the default) of string.");
@@ -1045,14 +1044,4 @@ pub(crate) fn init_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(ntile))?;
 
     Ok(())
-}
-
-pub fn extract(part: &str, date: Expr) -> Expr {
-    Expr::ScalarFunction {
-        fun: BuiltinScalarFunction::Extract,
-        args: vec![
-            Expr::Literal(ScalarValue::Utf8(Some(part.to_string()))),
-            date,
-        ],
-    }
 }
