@@ -20,33 +20,10 @@ from datafusion import SessionContext
 import pyarrow as pa
 from pyarrow.csv import write_csv
 
-import pandas as pd
-
 
 @pytest.fixture
 def ctx():
-    ctx = SessionContext()
-    batch = pa.RecordBatch.from_arrays(
-        [
-            pa.array([1, 2, 3, 4, 5, 6, 7], pa.int32()),
-            pa.array(["a", "a", "a", "a", "a", "b", "b"], pa.string()),
-            pa.array(
-                [
-                    pd.Timestamp("2020-10-05"),
-                    pd.Timestamp("2020-10-05"),
-                    pd.Timestamp("2020-10-05"),
-                    pd.Timestamp("2020-10-06"),
-                    pd.Timestamp("2020-10-06"),
-                    pd.Timestamp("2020-10-06"),
-                    pd.Timestamp("2020-10-07"),
-                ],
-                pa.timestamp("s"),
-            ),
-        ],
-        names=["id", "grp", "event_time"],
-    )
-    ctx.register_record_batches("events", [[batch]])
-    return ctx
+    return SessionContext()
 
 
 @pytest.fixture
