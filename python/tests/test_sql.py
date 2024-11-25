@@ -561,3 +561,33 @@ def test_register_listing_table(
 
     rd = result.to_pydict()
     assert dict(zip(rd["grp"], rd["count"])) == {"a": 3, "b": 2}
+
+
+def test_extract_month(ctx):
+    result = ctx.sql(
+        "SELECT EXTRACT(MONTH FROM event_time) AS month, COUNT(*) AS event_count "
+        "FROM events "
+        "GROUP BY EXTRACT(MONTH FROM event_time)"
+    ).collect()
+    result = pa.Table.from_batches(result)
+
+    rd = result.to_pydict()
+    assert dict(zip(rd["month"], rd["event_count"])) == {10: 7}
+
+
+def test_group_by(ctx):
+    result = ctx.sql(
+        "SELECT grp, COUNT(*) AS count FROM my_table GROUP BY grp"
+    ).collect()
+    result = pa.Table.from_batches(result)
+
+    rd = result.to_pydict()
+    assert dict(zip(rd["grp"], rd["count"])) == {"a": 5, "b": 2}
+
+    result = ctx.sql(
+        "SELECT grp, COUNT(*) AS count FROM my_table WHERE date_id=20201005 GROUP BY grp"
+    ).collect()
+    result = pa.Table.from_batches(result)
+
+    rd = result.to_pydict()
+    assert dict(zip(rd["grp"], rd["count"])) == {"a": 3, "b": 2}
