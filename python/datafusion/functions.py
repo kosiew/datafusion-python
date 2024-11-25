@@ -2713,3 +2713,8 @@ def string_agg(
             order_by=order_by_raw,
         )
     )
+
+
+def extract(part: str, date: Expr) -> Expr:
+    """Extracts a subfield from the date."""
+    return Expr(f.extract(Expr.literal(part).expr, date.expr))

@@ -1120,3 +1120,27 @@ def test_between_default(df):
 
     actual = df.collect()[0].to_pydict()
     assert actual == expected
+
+
+def test_extract_function():
+    ctx = SessionContext()
+    batch = pa.RecordBatch.from_arrays(
+        [
+            pa.array(
+                [datetime(2022, 1, 15), datetime(2022, 2, 20), datetime(2022, 1, 25)]
+            )
+        ],
+        names=["event_time"],
+    )
+    df = ctx.create_dataframe([[batch]])
+
+    df = df.select(
+        f.extract("MONTH", column("event_time")).alias("month"),
+        f.count_star().alias("event_count"),
+    ).group_by(f.extract("MONTH", column("event_time")))
+
+    result = df.collect()
+    assert len(result) == 1
+    result = result[0]
+    assert result.column(0) == pa.array([1, 2], type=pa.int32())
+    assert result.column(1) == pa.array([2, 1], type=pa.int64())
