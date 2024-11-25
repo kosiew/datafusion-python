@@ -29,32 +29,6 @@ import pandas as pd
 from . import generic as helpers
 
 
-@pytest.fixture
-def ctx():
-    ctx = SessionContext()
-    batch = pa.RecordBatch.from_arrays(
-        [
-            pa.array([1, 2, 3, 4, 5, 6, 7], pa.int32()),
-            pa.array(["a", "a", "a", "a", "a", "b", "b"], pa.string()),
-            pa.array(
-                [
-                    pd.Timestamp("2020-10-05"),
-                    pd.Timestamp("2020-10-05"),
-                    pd.Timestamp("2020-10-05"),
-                    pd.Timestamp("2020-10-06"),
-                    pd.Timestamp("2020-10-06"),
-                    pd.Timestamp("2020-10-06"),
-                    pd.Timestamp("2020-10-07"),
-                ],
-                pa.timestamp("s"),
-            ),
-        ],
-        names=["id", "grp", "event_time"],
-    )
-    ctx.register_record_batches("events", [[batch]])
-    return ctx
-
-
 def test_no_table(ctx):
     with pytest.raises(Exception, match="DataFusion error"):
         ctx.sql("SELECT a FROM b").collect()
@@ -563,8 +537,9 @@ def test_register_listing_table(
     assert dict(zip(rd["grp"], rd["count"])) == {"a": 3, "b": 2}
 
 
-def test_extract_month(ctx):
-    result = ctx.sql(
+def test_extract_month(ctx_events):
+
+    result = ctx_events.sql(
         "SELECT EXTRACT(MONTH FROM event_time) AS month, COUNT(*) AS event_count "
         "FROM events "
         "GROUP BY EXTRACT(MONTH FROM event_time)"
