@@ -13,3 +13,10 @@ print(df_table.schema())
 df_table.write_parquet(FILENAME)
 print("roundtrip schema:")
 print(ctx.read_parquet(FILENAME).schema())
+
+# register parquet file as table
+ctx.register_parquet("test_fixed_list", FILENAME)
+
+# print the table schema
+print("register parquet schema:")
+print(ctx.table("test_fixed_list").schema())

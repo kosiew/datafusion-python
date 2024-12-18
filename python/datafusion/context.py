@@ -738,7 +738,7 @@ class SessionContext:
             schema: The data source schema.
             file_sort_order: Sort order for the file.
         """
-        print("==> register_parquet")
+        print("==> register_parquet with skip_metadata: ", skip_metadata)
         if table_partition_cols is None:
             table_partition_cols = []
         self.ctx.register_parquet(
