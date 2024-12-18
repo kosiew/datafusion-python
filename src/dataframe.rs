@@ -477,11 +477,6 @@ impl PyDataFrame {
             cl.ok_or(PyValueError::new_err("compression_level is not defined"))
         }
 
-        println!(
-            "==> write_parquet: compression={}, compression_level={:?}",
-            compression, compression_level
-        );
-
         let _validated = match compression.to_lowercase().as_str() {
             "snappy" => Compression::SNAPPY,
             "gzip" => Compression::GZIP(
