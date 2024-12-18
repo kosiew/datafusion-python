@@ -467,6 +467,7 @@ class SessionContext:
             ctx = SessionContext()
             df = ctx.read_csv("data.csv")
         """
+        print("==> SessionContext")
         config = config.config_internal if config is not None else None
         runtime = runtime.config_internal if runtime is not None else None
 
@@ -714,7 +715,7 @@ class SessionContext:
         table_partition_cols: list[tuple[str, str]] | None = None,
         parquet_pruning: bool = True,
         file_extension: str = ".parquet",
-        skip_metadata: bool = True,
+        skip_metadata: bool = False,
         schema: pyarrow.Schema | None = None,
         file_sort_order: list[list[Expr]] | None = None,
     ) -> None:
@@ -737,6 +738,7 @@ class SessionContext:
             schema: The data source schema.
             file_sort_order: Sort order for the file.
         """
+        print("==> register_parquet")
         if table_partition_cols is None:
             table_partition_cols = []
         self.ctx.register_parquet(
