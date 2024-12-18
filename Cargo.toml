@@ -76,13 +76,7 @@ object_store = { version = "0.11.0", features = [
     "http",
 ] }
 url = "2"
-# patch datafusion
-[patch.crates-io]
-datafusion = { git = "https://github.com/kosiew/datafusion", branch = "tag43-parquet" }
-datafusion-proto = { git = "https://github.com/kosiew/datafusion", branch = "tag43-parquet" }
-datafusion-ffi = { git = "https://github.com/kosiew/datafusion", branch = "tag43-parquet" }
-datafusion-functions-window-common = { git = "https://github.com/kosiew/datafusion", branch = "tag43-parquet" }
-datafusion-substrait = { git = "https://github.com/kosiew/datafusion", branch = "tag43-parquet" }
+
 [build-dependencies]
 prost-types = "0.13"       # keep in line with `datafusion-substrait`
 pyo3-build-config = "0.22"
