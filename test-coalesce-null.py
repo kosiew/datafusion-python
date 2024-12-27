@@ -40,4 +40,7 @@ ORDER BY
     time_window;"""
 
 df = ctx.sql(sql)
-df.to_arrow_table()
+print(df)
+tb = df.to_arrow_table()
+
+print(tb)
