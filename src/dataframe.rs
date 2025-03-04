@@ -90,38 +90,22 @@ impl PyDataFrame {
     }
 
     fn __repr__(&self, py: Python) -> PyDataFusionResult<String> {
-        // Get 11 rows to check if there are more than 10
-        let df = self.df.as_ref().clone().limit(0, Some(11))?;
-        let batches = wait_for_future(py, df.collect())?;
-        let num_rows = batches.iter().map(|batch| batch.num_rows()).sum::<usize>();
-    
-        // Flatten batches into a single batch for the first 10 rows
-        let mut all_rows = Vec::new();
-        let mut total_rows = 0;
-        
-        for batch in &batches {
-            let num_rows_to_take = if total_rows + batch.num_rows() > 10 {
-                10 - total_rows
-            } else {
-                batch.num_rows()
-            };
-    
-            if num_rows_to_take > 0 {
-                let sliced_batch = batch.slice(0, num_rows_to_take);
-                all_rows.push(sliced_batch);
-                total_rows += num_rows_to_take;
-            }
-    
-            if total_rows >= 10 {
-                break;
-            }
-        }
-    
-        let batches_as_string = pretty::pretty_format_batches(&all_rows);
-    
+        // First get just the first 10 rows
+        let preview_df = self.df.as_ref().clone().limit(0, Some(10))?;
+        let preview_batches = wait_for_future(py, preview_df.collect())?;
+
+        // Check if there are more rows by trying to get the 11th row
+        let has_more_rows = {
+            let check_df = self.df.as_ref().clone().limit(10, Some(1))?;
+            let check_batch = wait_for_future(py, check_df.collect())?;
+            !check_batch.is_empty()
+        };
+
+        let batches_as_string = pretty::pretty_format_batches(&preview_batches);
+
         match batches_as_string {
             Ok(batch) => {
-                if num_rows > 10 {
+                if has_more_rows {
                     Ok(format!("DataFrame()\n{batch}\n... and additional rows"))
                 } else {
                     Ok(format!("DataFrame()\n{batch}"))
@@ -130,32 +114,30 @@ impl PyDataFrame {
             Err(err) => Ok(format!("Error: {:?}", err.to_string())),
         }
     }
-    
-    
 
     fn _repr_html_(&self, py: Python) -> PyDataFusionResult<String> {
         let mut html_str = "<table border='1'>\n".to_string();
-    
+
         // Limit to the first 11 rows
         let df = self.df.as_ref().clone().limit(0, Some(11))?;
         let batches = wait_for_future(py, df.collect())?;
-    
+
         // If there are no rows, close the table and return
         if batches.is_empty() {
             html_str.push_str("</table>\n");
             return Ok(html_str);
         }
-    
+
         // Get schema for headers
         let schema = batches[0].schema();
-        
+
         let mut header = Vec::new();
         for field in schema.fields() {
             header.push(format!("<th>{}</th>", field.name()));
         }
         let header_str = header.join("");
         html_str.push_str(&format!("<tr>{}</tr>\n", header_str));
-    
+
         // Flatten rows and format them as HTML
         let mut total_rows = 0;
         for batch in &batches {
@@ -164,11 +146,17 @@ impl PyDataFrame {
                 .columns()
                 .iter()
                 .map(|c| ArrayFormatter::try_new(c.as_ref(), &FormatOptions::default()))
-                .map(|c| c.map_err(|e| PyValueError::new_err(format!("Error: {:?}", e.to_string()))))
+                .map(|c| {
+                    c.map_err(|e| PyValueError::new_err(format!("Error: {:?}", e.to_string())))
+                })
                 .collect::<Result<Vec<_>, _>>()?;
-    
-            let num_rows_to_render = if total_rows > 10 { 10 } else { batch.num_rows() };
-    
+
+            let num_rows_to_render = if total_rows > 10 {
+                10
+            } else {
+                batch.num_rows()
+            };
+
             for row in 0..num_rows_to_render {
                 let mut cells = Vec::new();
                 for formatter in &formatters {
@@ -182,16 +170,15 @@ impl PyDataFrame {
                 break;
             }
         }
-    
+
         if total_rows > 10 {
             html_str.push_str("<tr><td colspan=\"100%\">... and additional rows</td></tr>\n");
         }
-    
+
         html_str.push_str("</table>\n");
-    
+
         Ok(html_str)
     }
-    
 
     /// Calculate summary statistics for a DataFrame
     fn describe(&self, py: Python) -> PyDataFusionResult<Self> {
