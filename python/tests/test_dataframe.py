@@ -1192,7 +1192,7 @@ def test_dataframe_repr_html(df) -> None:
     output = df._repr_html_()
 
     ref_html = """<table border='1'>
-        <tr><th>a</td><th>b</td><th>c</td></tr>
+        <tr><th>a</th><th>b</th><th>c</th></tr>
         <tr><td>1</td><td>4</td><td>8</td></tr>
         <tr><td>2</td><td>5</td><td>5</td></tr>
         <tr><td>3</td><td>6</td><td>8</td></tr>
@@ -1221,6 +1221,39 @@ def test_dataframe_str(df) -> None:
     output = str(df)
     # str() should return the same as repr()
     assert output == repr(df)
+
+
+def test_dataframe_repr_long(ctx) -> None:
+    # Create a DataFrame with more than 10 rows
+    batch = pa.RecordBatch.from_arrays(
+        [
+            pa.array(list(range(15))),
+            pa.array([x * 2 for x in range(15)]),
+            pa.array([x * 3 for x in range(15)]),
+        ],
+        names=["a", "b", "c"],
+    )
+    df = ctx.create_dataframe([[batch]])
+
+    output = repr(df)
+    expected = """DataFrame()
++---+----+----+
+| a | b  | c  |
++---+----+----+
+| 0 | 0  | 0  |
+| 1 | 2  | 3  |
+| 2 | 4  | 6  |
+| 3 | 6  | 9  |
+| 4 | 8  | 12 |
+| 5 | 10 | 15 |
+| 6 | 12 | 18 |
+| 7 | 14 | 21 |
+| 8 | 16 | 24 |
+| 9 | 18 | 27 |
++---+----+----+
+... and additional rows"""
+
+    assert output == expected
 
 
 def test_format_column_name(df):
