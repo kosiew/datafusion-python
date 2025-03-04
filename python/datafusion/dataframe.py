@@ -856,3 +856,14 @@ class DataFrame:
             DataFrame: After applying func to the original dataframe.
         """
         return func(self, *args)
+
+    def format_column_name(self, name: str) -> str:
+        """Format a column name for display.
+
+        Args:
+            name: The column name to format
+
+        Returns:
+            The formatted column name as a string
+        """
+        return self.df.format_column_name(str(name))

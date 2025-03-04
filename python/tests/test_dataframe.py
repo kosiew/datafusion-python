@@ -1221,3 +1221,10 @@ def test_dataframe_str(df) -> None:
     output = str(df)
     # str() should return the same as repr()
     assert output == repr(df)
+
+
+def test_format_column_name(df):
+    """Test the format_column_name method."""
+    assert df.format_column_name("test") == "test"
+    assert df.format_column_name(123) == "123"
+    assert df.format_column_name(None) == "None"
