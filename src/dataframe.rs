@@ -116,13 +116,15 @@ impl PyDataFrame {
     }
 
     fn _repr_html_(&self, py: Python) -> PyDataFusionResult<String> {
-        let mut html_str = "<table border='1'>\n".to_string();
+        // Estimate required capacity and preallocate buffer
+        let mut html_str = String::with_capacity(2048);
+        html_str.push_str("<table border='1'>\n");
 
-        // Limit to the first 11 rows
+        // Limit to the first 11 rows (10 + 1 to check if there are more)
         let df = self.df.as_ref().clone().limit(0, Some(11))?;
         let batches = wait_for_future(py, df.collect())?;
 
-        // If there are no rows, close the table and return
+        // Early exit if no data
         if batches.is_empty() {
             html_str.push_str("</table>\n");
             return Ok(html_str);
@@ -130,53 +132,47 @@ impl PyDataFrame {
 
         // Get schema for headers
         let schema = batches[0].schema();
+        let column_count = schema.fields().len();
+        html_str.reserve(16 * column_count); // Pre-allocate header space
 
-        let mut header = Vec::new();
+        html_str.push_str("<tr>");
         for field in schema.fields() {
-            header.push(format!("<th>{}</th>", field.name()));
+            html_str.push_str("<th>");
+            html_str.push_str(field.name());
+            html_str.push_str("</th>");
         }
-        let header_str = header.join("");
-        html_str.push_str(&format!("<tr>{}</tr>\n", header_str));
+        html_str.push_str("</tr>\n");
 
-        // Flatten rows and format them as HTML
+        // Track total rows and handle formatting
         let mut total_rows = 0;
         for batch in &batches {
-            total_rows += batch.num_rows();
-            let formatters = batch
-                .columns()
-                .iter()
-                .map(|c| ArrayFormatter::try_new(c.as_ref(), &FormatOptions::default()))
-                .map(|c| {
-                    c.map_err(|e| PyValueError::new_err(format!("Error: {:?}", e.to_string())))
-                })
-                .collect::<Result<Vec<_>, _>>()?;
+            let rows_remaining = 10 - total_rows;
+            let rows_in_batch = batch.num_rows().min(rows_remaining);
 
-            let num_rows_to_render = if total_rows > 10 {
-                10
-            } else {
-                batch.num_rows()
-            };
-
-            for row in 0..num_rows_to_render {
-                let mut cells = Vec::new();
-                for formatter in &formatters {
-                    cells.push(format!("<td>{}</td>", formatter.value(row)));
+            // Process rows
+            for row in 0..rows_in_batch {
+                html_str.push_str("<tr>");
+                for col in batch.columns() {
+                    let formatter =
+                        ArrayFormatter::try_new(col.as_ref(), &FormatOptions::default())?;
+                    html_str.push_str("<td>");
+                    html_str.push_str(&formatter.value(row).to_string());
+                    html_str.push_str("</td>");
                 }
-                let row_str = cells.join("");
-                html_str.push_str(&format!("<tr>{}</tr>\n", row_str));
+                html_str.push_str("</tr>\n");
             }
 
-            if total_rows >= 10 {
-                break;
-            }
+            total_rows += rows_in_batch;
         }
 
-        if total_rows > 10 {
-            html_str.push_str("<tr><td colspan=\"100%\">... and additional rows</td></tr>\n");
+        // Add ellipsis row if more data exists
+        if total_rows >= 10 {
+            html_str.push_str("<tr><td colspan=\"");
+            html_str.push_str(&column_count.to_string());
+            html_str.push_str("\">... and additional rows</td></tr>\n");
         }
 
         html_str.push_str("</table>\n");
-
         Ok(html_str)
     }
 
