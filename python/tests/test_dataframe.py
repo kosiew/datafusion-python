@@ -1256,6 +1256,28 @@ def test_dataframe_repr_long(ctx) -> None:
     assert output == expected
 
 
+def test_dataframe_repr_performance(ctx):
+    # Create a DataFrame with a large number of rows (100,000)
+    batch = pa.RecordBatch.from_arrays(
+        [
+            pa.array(list(range(100_000))),
+            pa.array([x * 2 for x in range(100_000)]),
+            pa.array([x * 3 for x in range(100_000)]),
+        ],
+        names=["a", "b", "c"],
+    )
+    df = ctx.create_dataframe([[batch]])
+
+    # Test that repr() completes within 1 second
+    import time
+
+    start_time = time.time()
+    _ = repr(df)
+    duration = time.time() - start_time
+
+    assert duration < 1.0, f"repr() took {duration:.2f} seconds, which is too long"
+
+
 def test_format_column_name(df):
     """Test the format_column_name method."""
     assert df.format_column_name("test") == "test"
