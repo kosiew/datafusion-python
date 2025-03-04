@@ -730,9 +730,7 @@ def test_optimized_logical_plan(aggregate_df):
 def test_execution_plan(aggregate_df):
     plan = aggregate_df.execution_plan()
 
-    expected = (
-        "AggregateExec: mode=FinalPartitioned, gby=[c1@0 as c1], aggr=[sum(test.c2)]\n"  # noqa: E501
-    )
+    expected = "AggregateExec: mode=FinalPartitioned, gby=[c1@0 as c1], aggr=[sum(test.c2)]\n"  # noqa: E501
 
     assert expected == plan.display()
 
@@ -1203,3 +1201,23 @@ def test_dataframe_repr_html(df) -> None:
 
     # Ignore whitespace just to make this test look cleaner
     assert output.replace(" ", "") == ref_html.replace(" ", "")
+
+
+def test_dataframe_repr(df) -> None:
+    output = repr(df)
+    expected = """DataFrame()
++---+---+---+
+| a | b | c |
++---+---+---+
+| 1 | 4 | 8 |
+| 2 | 5 | 5 |
+| 3 | 6 | 8 |
++---+---+---+"""
+
+    assert output == expected
+
+
+def test_dataframe_str(df) -> None:
+    output = str(df)
+    # str() should return the same as repr()
+    assert output == repr(df)
