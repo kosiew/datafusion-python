@@ -1275,7 +1275,9 @@ def test_dataframe_repr_performance(ctx):
     _ = repr(df)
     duration = time.time() - start_time
 
-    assert duration < 1.0, f"repr() took {duration:.2f} seconds, which is too long"
+    assert (
+        duration * 100 < 1.0
+    ), f"repr() took {duration:.2f} seconds, which is too long"
 
 
 def test_format_column_name(df):
