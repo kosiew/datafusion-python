@@ -31,6 +31,7 @@ from datafusion import (
 from datafusion import functions as f
 from datafusion.expr import Window
 from pyarrow.csv import write_csv
+from tests.generic import data
 
 
 @pytest.fixture
@@ -45,6 +46,23 @@ def df():
     # create a RecordBatch and a new DataFrame from it
     batch = pa.RecordBatch.from_arrays(
         [pa.array([1, 2, 3]), pa.array([4, 5, 6]), pa.array([8, 5, 8])],
+        names=["a", "b", "c"],
+    )
+
+    return ctx.from_arrow(batch)
+
+
+@pytest.fixture
+def empty_df():
+    ctx = SessionContext()
+
+    # Create an empty RecordBatch with the same schema as df
+    batch = pa.RecordBatch.from_arrays(
+        [
+            pa.array([], type=pa.int64()),
+            pa.array([], type=pa.int64()),
+            pa.array([], type=pa.int64()),
+        ],
         names=["a", "b", "c"],
     )
 
@@ -1189,7 +1207,12 @@ def test_dataframe_transform(df):
     assert result["new_col"] == [3 for _i in range(3)]
 
 
-def test_dataframe_repr_html(df) -> None:
+@pytest.mark.parametrize(
+    "dataframe_fixture",
+    ["empty_df", "df", "nested_df", "struct_df", "partitioned_df", "aggregate_df"],
+)
+def test_dataframe_repr_html(request, dataframe_fixture) -> None:
+    df = request.getfixturevalue(dataframe_fixture)
     output = df._repr_html_()
 
     # Since we've added a fair bit of processing to the html output, lets just verify
@@ -1202,7 +1225,15 @@ def test_dataframe_repr_html(df) -> None:
     header_pattern = "(.*?)".join(headers)
     assert len(re.findall(header_pattern, output, re.DOTALL)) == 1
 
-    body_data = [[1, 4, 8], [2, 5, 5], [3, 6, 8]]
-    body_lines = [f"<td(.*?)>{v}</td>" for inner in body_data for v in inner]
-    body_pattern = "(.*?)".join(body_lines)
-    assert len(re.findall(body_pattern, output, re.DOTALL)) == 1
+    if dataframe_fixture == "empty_df":
+        # For empty dataframe, make sure we don't have any data cells but do have header
+        assert "<tbody>" in output
+        assert "</tbody>" in output
+        # Check there are no data cells
+        assert len(re.findall(r"<td.*?>.*?</td>", output, re.DOTALL)) == 0
+    else:
+        # For non-empty dataframe, verify data rows
+        body_data = [[1, 4, 8], [2, 5, 5], [3, 6, 8]]
+        body_lines = [f"<td(.*?)>{v}</td>" for inner in body_data for v in inner]
+        body_pattern = "(.*?)".join(body_lines)
+        assert len(re.findall(body_pattern, output, re.DOTALL)) == 1

@@ -116,147 +116,48 @@ impl PyDataFrame {
     }
 
     fn __repr__(&self, py: Python) -> PyDataFusionResult<String> {
-        let (batches, has_more) = wait_for_future(
-            py,
-            collect_record_batches_to_display(self.df.as_ref().clone(), 10, 10),
-        )?;
+        let (batches, has_more) = fetch_batches_for_display(py, self.df.as_ref().clone(), 10, 10)?;
         if batches.is_empty() {
-            // This should not be reached, but do it for safety since we index into the vector below
-            return Ok("No data to display".to_string());
+            return Ok(get_empty_display_message());
         }
 
         let batches_as_displ =
             pretty::pretty_format_batches(&batches).map_err(py_datafusion_err)?;
 
-        let additional_str = match has_more {
-            true => "\nData truncated.",
-            false => "",
-        };
-
-        Ok(format!("DataFrame()\n{batches_as_displ}{additional_str}"))
+        Ok(format_display_output(
+            "DataFrame()",
+            &batches_as_displ,
+            has_more,
+        ))
     }
 
     fn _repr_html_(&self, py: Python) -> PyDataFusionResult<String> {
-        let (batches, has_more) = wait_for_future(
+        let (batches, has_more) = fetch_batches_for_display(
             py,
-            collect_record_batches_to_display(
-                self.df.as_ref().clone(),
-                MIN_TABLE_ROWS_TO_DISPLAY,
-                usize::MAX,
-            ),
+            self.df.as_ref().clone(),
+            MIN_TABLE_ROWS_TO_DISPLAY,
+            usize::MAX,
         )?;
         if batches.is_empty() {
-            // This should not be reached, but do it for safety since we index into the vector below
-            return Ok("No data to display".to_string());
+            return Ok(get_empty_display_message());
         }
 
         let table_uuid = uuid::Uuid::new_v4().to_string();
-
-        let mut html_str = "
-        <style>
-            .expandable-container {
-                display: inline-block;
-                max-width: 200px;
-            }
-            .expandable {
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                display: block;
-            }
-            .full-text {
-                display: none;
-                white-space: normal;
-            }
-            .expand-btn {
-                cursor: pointer;
-                color: blue;
-                text-decoration: underline;
-                border: none;
-                background: none;
-                font-size: inherit;
-                display: block;
-                margin-top: 5px;
-            }
-        </style>
-
-        <div style=\"width: 100%; max-width: 1000px; max-height: 300px; overflow: auto; border: 1px solid #ccc;\">
-            <table style=\"border-collapse: collapse; min-width: 100%\">
-                <thead>\n".to_string();
-
         let schema = batches[0].schema();
 
-        let mut header = Vec::new();
-        for field in schema.fields() {
-            header.push(format!("<th style='border: 1px solid black; padding: 8px; text-align: left; background-color: #f2f2f2; white-space: nowrap; min-width: fit-content; max-width: fit-content;'>{}</th>", field.name()));
-        }
-        let header_str = header.join("");
-        html_str.push_str(&format!("<tr>{}</tr></thead><tbody>\n", header_str));
-
-        let batch_formatters = batches
-            .iter()
-            .map(|batch| {
-                batch
-                    .columns()
-                    .iter()
-                    .map(|c| ArrayFormatter::try_new(c.as_ref(), &FormatOptions::default()))
-                    .map(|c| {
-                        c.map_err(|e| PyValueError::new_err(format!("Error: {:?}", e.to_string())))
-                    })
-                    .collect::<Result<Vec<_>, _>>()
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-
+        // Get table formatters for displaying cell values
+        let batch_formatters = get_batch_formatters(&batches)?;
         let rows_per_batch = batches.iter().map(|batch| batch.num_rows());
 
-        // We need to build up row by row for html
-        let mut table_row = 0;
-        for (batch_formatter, num_rows_in_batch) in batch_formatters.iter().zip(rows_per_batch) {
-            for batch_row in 0..num_rows_in_batch {
-                table_row += 1;
-                let mut cells = Vec::new();
-                for (col, formatter) in batch_formatter.iter().enumerate() {
-                    let cell_data = formatter.value(batch_row).to_string();
-                    // From testing, primitive data types do not typically get larger than 21 characters
-                    if cell_data.len() > MAX_LENGTH_CELL_WITHOUT_MINIMIZE {
-                        let short_cell_data = &cell_data[0..MAX_LENGTH_CELL_WITHOUT_MINIMIZE];
-                        cells.push(format!("
-                            <td style='border: 1px solid black; padding: 8px; text-align: left; white-space: nowrap;'>
-                                <div class=\"expandable-container\">
-                                    <span class=\"expandable\" id=\"{table_uuid}-min-text-{table_row}-{col}\">{short_cell_data}</span>
-                                    <span class=\"full-text\" id=\"{table_uuid}-full-text-{table_row}-{col}\">{cell_data}</span>
-                                    <button class=\"expand-btn\" onclick=\"toggleDataFrameCellText('{table_uuid}',{table_row},{col})\">...</button>
-                                </div>
-                            </td>"));
-                    } else {
-                        cells.push(format!("<td style='border: 1px solid black; padding: 8px; text-align: left; white-space: nowrap;'>{}</td>", formatter.value(batch_row)));
-                    }
-                }
-                let row_str = cells.join("");
-                html_str.push_str(&format!("<tr>{}</tr>\n", row_str));
-            }
-        }
+        // Generate HTML components
+        let mut html_str = generate_html_table_header(&schema);
+        html_str.push_str(&generate_table_rows(
+            &batch_formatters,
+            rows_per_batch,
+            &table_uuid,
+        )?);
         html_str.push_str("</tbody></table></div>\n");
-
-        html_str.push_str("
-            <script>
-            function toggleDataFrameCellText(table_uuid, row, col) {
-                var shortText = document.getElementById(table_uuid + \"-min-text-\" + row + \"-\" + col);
-                var fullText = document.getElementById(table_uuid + \"-full-text-\" + row + \"-\" + col);
-                var button = event.target;
-
-                if (fullText.style.display === \"none\") {
-                    shortText.style.display = \"none\";
-                    fullText.style.display = \"inline\";
-                    button.textContent = \"(less)\";
-                } else {
-                    shortText.style.display = \"inline\";
-                    fullText.style.display = \"none\";
-                    button.textContent = \"...\";
-                }
-            }
-            </script>
-        ");
+        html_str.push_str(&generate_javascript());
 
         if has_more {
             html_str.push_str("Data truncated due to size.");
@@ -835,7 +736,7 @@ fn record_batch_into_schema(
 ) -> Result<RecordBatch, ArrowError> {
     let schema = Arc::new(schema.clone());
     let base_schema = record_batch.schema();
-    if base_schema.fields().len() == 0 {
+    if (base_schema.fields().len() == 0) {
         // Nothing to project
         return Ok(RecordBatch::new_empty(schema));
     }
@@ -949,4 +850,168 @@ async fn collect_record_batches_to_display(
     }
 
     Ok((record_batches, has_more))
+}
+
+// Helper function to generate table formatters for each column
+fn get_batch_formatters(batches: &[RecordBatch]) -> Result<Vec<Vec<ArrayFormatter>>, PyErr> {
+    batches
+        .iter()
+        .map(|batch| {
+            batch
+                .columns()
+                .iter()
+                .map(|c| ArrayFormatter::try_new(c.as_ref(), &FormatOptions::default()))
+                .map(|c| {
+                    c.map_err(|e| PyValueError::new_err(format!("Error: {:?}", e.to_string())))
+                })
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .collect::<Result<Vec<_>, _>>()
+}
+
+// Helper function to generate the HTML style and table header
+fn generate_html_table_header(schema: &Schema) -> String {
+    let mut html = "
+        <style>
+            .expandable-container {
+                display: inline-block;
+                max-width: 200px;
+            }
+            .expandable {
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                display: block;
+            }
+            .full-text {
+                display: none;
+                white-space: normal;
+            }
+            .expand-btn {
+                cursor: pointer;
+                color: blue;
+                text-decoration: underline;
+                border: none;
+                background: none;
+                font-size: inherit;
+                display: block;
+                margin-top: 5px;
+            }
+        </style>
+
+        <div style=\"width: 100%; max-width: 1000px; max-height: 300px; overflow: auto; border: 1px solid #ccc;\">
+            <table style=\"border-collapse: collapse; min-width: 100%\">
+                <thead>\n".to_string();
+
+    let mut header = Vec::new();
+    for field in schema.fields() {
+        header.push(format!("<th style='border: 1px solid black; padding: 8px; text-align: left; background-color: #f2f2f2; white-space: nowrap; min-width: fit-content; max-width: fit-content;'>{}</th>", field.name()));
+    }
+    let header_str = header.join("");
+    html.push_str(&format!("<tr>{}</tr></thead><tbody>\n", header_str));
+
+    html
+}
+
+// Helper function to generate table rows with cell content
+fn generate_table_rows(
+    batch_formatters: &[Vec<ArrayFormatter>],
+    rows_per_batch: impl Iterator<Item = usize>,
+    table_uuid: &str,
+) -> Result<String, PyErr> {
+    let mut html = String::new();
+
+    // We need to build up row by row for html
+    let mut table_row = 0;
+    for (batch_formatter, num_rows_in_batch) in batch_formatters.iter().zip(rows_per_batch) {
+        for batch_row in 0..num_rows_in_batch {
+            table_row += 1;
+            let cells = generate_row_cells(batch_formatter, batch_row, table_row, table_uuid);
+            let row_str = cells.join("");
+            html.push_str(&format!("<tr>{}</tr>\n", row_str));
+        }
+    }
+
+    Ok(html)
+}
+
+// Helper function to generate the cells for a single row
+fn generate_row_cells(
+    formatters: &[ArrayFormatter],
+    batch_row: usize,
+    table_row: usize,
+    table_uuid: &str,
+) -> Vec<String> {
+    let mut cells = Vec::new();
+
+    for (col, formatter) in formatters.iter().enumerate() {
+        let cell_data = formatter.value(batch_row).to_string();
+
+        // From testing, primitive data types do not typically get larger than 21 characters
+        if cell_data.len() > MAX_LENGTH_CELL_WITHOUT_MINIMIZE {
+            let short_cell_data = &cell_data[0..MAX_LENGTH_CELL_WITHOUT_MINIMIZE];
+            cells.push(format!("
+                <td style='border: 1px solid black; padding: 8px; text-align: left; white-space: nowrap;'>
+                    <div class=\"expandable-container\">
+                        <span class=\"expandable\" id=\"{table_uuid}-min-text-{table_row}-{col}\">{short_cell_data}</span>
+                        <span class=\"full-text\" id=\"{table_uuid}-full-text-{table_row}-{col}\">{cell_data}</span>
+                        <button class=\"expand-btn\" onclick=\"toggleDataFrameCellText('{table_uuid}',{table_row},{col})\">...</button>
+                    </div>
+                </td>"));
+        } else {
+            cells.push(format!(
+                "<td style='border: 1px solid black; padding: 8px; text-align: left; white-space: nowrap;'>{}</td>", 
+                formatter.value(batch_row)
+            ));
+        }
+    }
+
+    cells
+}
+
+// Helper function to generate the JavaScript for cell expansion
+fn generate_javascript() -> String {
+    "
+        <script>
+        function toggleDataFrameCellText(table_uuid, row, col) {
+            var shortText = document.getElementById(table_uuid + \"-min-text-\" + row + \"-\" + col);
+            var fullText = document.getElementById(table_uuid + \"-full-text-\" + row + \"-\" + col);
+            var button = event.target;
+
+            if (fullText.style.display === \"none\") {
+                shortText.style.display = \"none\";
+                fullText.style.display = \"inline\";
+                button.textContent = \"(less)\";
+            } else {
+                shortText.style.display = \"inline\";
+                fullText.style.display = \"none\";
+                button.textContent = \"...\";
+            }
+        }
+        </script>
+    ".to_string()
+}
+
+// Helper function to fetch and prepare batches for display
+fn fetch_batches_for_display(
+    py: Python,
+    df: DataFrame,
+    min_rows: usize,
+    max_rows: usize,
+) -> PyDataFusionResult<(Vec<RecordBatch>, bool)> {
+    wait_for_future(
+        py,
+        collect_record_batches_to_display(df, min_rows, max_rows),
+    )
+}
+
+// Helper function to get message when there's no data to display
+fn get_empty_display_message() -> String {
+    "No data to display".to_string()
+}
+
+// Helper function to format the output string for display
+fn format_display_output(prefix: &str, content: &str, has_more: bool) -> String {
+    let truncation_notice = if has_more { "\nData truncated." } else { "" };
+    format!("{prefix}\n{content}{truncation_notice}")
 }
