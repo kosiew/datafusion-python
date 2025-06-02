@@ -277,7 +277,13 @@ wheels = [
 name = "datafusion"
 source = { editable = "." }
 dependencies = [
+    { name = "myst-parser", version = "3.0.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
+    { name = "myst-parser", version = "4.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
     { name = "pyarrow" },
+    { name = "pydata-sphinx-theme" },
+    { name = "sphinx", version = "7.4.7", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
+    { name = "sphinx", version = "8.1.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
+    { name = "sphinx-autoapi" },
     { name = "typing-extensions", marker = "python_full_version < '3.13'" },
 ]
 
@@ -309,7 +315,11 @@ docs = [
 
 [package.metadata]
 requires-dist = [
+    { name = "myst-parser", specifier = ">=3.0.1" },
     { name = "pyarrow", specifier = ">=11.0.0" },
+    { name = "pydata-sphinx-theme", specifier = ">=0.8.0" },
+    { name = "sphinx", specifier = ">=7.4.7" },
+    { name = "sphinx-autoapi", specifier = ">=3.4.0" },
     { name = "typing-extensions", marker = "python_full_version < '3.13'" },
 ]
 
