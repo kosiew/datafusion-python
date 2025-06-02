@@ -277,6 +277,8 @@ wheels = [
 name = "datafusion"
 source = { editable = "." }
 dependencies = [
+    { name = "ipython", version = "8.18.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
+    { name = "ipython", version = "8.31.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
     { name = "myst-parser", version = "3.0.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "myst-parser", version = "4.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
     { name = "pyarrow" },
@@ -315,6 +317,7 @@ docs = [
 
 [package.metadata]
 requires-dist = [
+    { name = "ipython", specifier = ">=8.18.1" },
     { name = "myst-parser", specifier = ">=3.0.1" },
     { name = "pyarrow", specifier = ">=11.0.0" },
     { name = "pydata-sphinx-theme", specifier = ">=0.8.0" },
