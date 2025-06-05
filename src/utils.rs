@@ -24,6 +24,7 @@ use datafusion::logical_expr::Volatility;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyCapsule;
+use pyo3::PyErr;
 use std::future::Future;
 use std::sync::OnceLock;
 use tokio::runtime::Runtime;
@@ -47,14 +48,44 @@ pub(crate) fn get_global_ctx() -> &'static SessionContext {
     CTX.get_or_init(SessionContext::new)
 }
 
-/// Utility to collect rust futures with GIL released
-pub fn wait_for_future<F>(py: Python, f: F) -> F::Output
+/// Utility to collect rust futures with GIL released and respond to
+/// Python interrupts such as ``KeyboardInterrupt``. If a signal is
+/// received while the future is running, the future is aborted and the
+/// corresponding Python exception is raised.
+pub fn wait_for_future<F>(py: Python, f: F) -> PyResult<F::Output>
 where
-    F: Future + Send,
-    F::Output: Send,
+    F: Future + Send + 'static,
+    F::Output: Send + 'static,
 {
+    use std::{thread, time::Duration};
+    use tokio::task::JoinHandle;
+
     let runtime: &Runtime = &get_tokio_runtime().0;
-    py.allow_threads(|| runtime.block_on(f))
+
+    // Spawn the future so it can be aborted if a signal is received
+    let handle: JoinHandle<F::Output> = runtime.spawn(f);
+
+    let mut interrupt: Option<PyErr> = None;
+    py.allow_threads(|| {
+        while !handle.is_finished() {
+            thread::sleep(Duration::from_millis(10));
+            Python::with_gil(|py| {
+                if let Err(err) = py.check_signals() {
+                    handle.abort();
+                    interrupt = Some(err);
+                }
+            });
+            if interrupt.is_some() {
+                break;
+            }
+        }
+    });
+
+    if let Some(err) = interrupt {
+        return Err(err);
+    }
+
+    Ok(runtime.block_on(handle).expect("Tokio task panicked"))
 }
 
 pub(crate) fn parse_volatility(value: &str) -> PyDataFusionResult<Volatility> {

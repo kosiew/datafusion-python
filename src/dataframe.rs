@@ -391,7 +391,7 @@ impl PyDataFrame {
     /// Unless some order is specified in the plan, there is no
     /// guarantee of the order of the result.
     fn collect(&self, py: Python) -> PyResult<Vec<PyObject>> {
-        let batches = wait_for_future(py, self.df.as_ref().clone().collect())
+        let batches = wait_for_future(py, self.df.as_ref().clone().collect())?
             .map_err(PyDataFusionError::from)?;
         // cannot use PyResult<Vec<RecordBatch>> return type due to
         // https://github.com/PyO3/pyo3/issues/1813
@@ -407,8 +407,9 @@ impl PyDataFrame {
     /// Executes this DataFrame and collects all results into a vector of vector of RecordBatch
     /// maintaining the input partitioning.
     fn collect_partitioned(&self, py: Python) -> PyResult<Vec<Vec<PyObject>>> {
-        let batches = wait_for_future(py, self.df.as_ref().clone().collect_partitioned())
-            .map_err(PyDataFusionError::from)?;
+        let batches =
+            wait_for_future(py, self.df.as_ref().clone().collect_partitioned())?
+                .map_err(PyDataFusionError::from)?;
 
         batches
             .into_iter()
