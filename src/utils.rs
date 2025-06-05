@@ -24,7 +24,6 @@ use datafusion::logical_expr::Volatility;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyCapsule;
-use pyo3::PyErr;
 use std::future::Future;
 use std::sync::OnceLock;
 use tokio::runtime::Runtime;
@@ -52,40 +51,29 @@ pub(crate) fn get_global_ctx() -> &'static SessionContext {
 /// Python interrupts such as ``KeyboardInterrupt``. If a signal is
 /// received while the future is running, the future is aborted and the
 /// corresponding Python exception is raised.
-pub fn wait_for_future<F>(py: Python, f: F) -> PyResult<F::Output>
+pub fn wait_for_future<F>(py: Python, fut: F) -> PyResult<F::Output>
 where
-    F: Future + Send + 'static,
-    F::Output: Send + 'static,
+    F: Future + Send,
+    F::Output: Send,
 {
-    use std::{thread, time::Duration};
-    use tokio::task::JoinHandle;
+    use std::time::Duration;
+    use tokio::time::sleep;
 
     let runtime: &Runtime = &get_tokio_runtime().0;
 
-    // Spawn the future so it can be aborted if a signal is received
-    let handle: JoinHandle<F::Output> = runtime.spawn(f);
-
-    let mut interrupt: Option<PyErr> = None;
     py.allow_threads(|| {
-        while !handle.is_finished() {
-            thread::sleep(Duration::from_millis(10));
-            Python::with_gil(|py| {
-                if let Err(err) = py.check_signals() {
-                    handle.abort();
-                    interrupt = Some(err);
+        runtime.block_on(async {
+            tokio::pin!(fut);
+            loop {
+                tokio::select! {
+                    res = &mut fut => break Ok(res),
+                    _ = sleep(Duration::from_millis(10)) => {
+                        Python::with_gil(|py| py.check_signals())?;
+                    }
                 }
-            });
-            if interrupt.is_some() {
-                break;
             }
-        }
-    });
-
-    if let Some(err) = interrupt {
-        return Err(err);
-    }
-
-    Ok(runtime.block_on(handle).expect("Tokio task panicked"))
+        })
+    })
 }
 
 pub(crate) fn parse_volatility(value: &str) -> PyDataFusionResult<Volatility> {
