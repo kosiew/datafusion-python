@@ -825,10 +825,19 @@ impl PySessionContext {
     }
 
     pub fn table(&self, name: &str, py: Python) -> PyResult<PyDataFrame> {
-        let x = wait_for_future(py, self.ctx.table(name))
-            .map_err(|e| PyKeyError::new_err(e.to_string()))?
-            .map_err(py_datafusion_err)?;
-        Ok(PyDataFrame::new(x))
+        let res = wait_for_future(py, self.ctx.table(name))
+            .map_err(|e| PyKeyError::new_err(e.to_string()))?;
+        match res {
+            Ok(df) => Ok(PyDataFrame::new(df)),
+            Err(e) => {
+                if let datafusion::error::DataFusionError::Plan(msg) = &e {
+                    if msg.contains("No table named") {
+                        return Err(PyKeyError::new_err(msg.to_string()));
+                    }
+                }
+                Err(py_datafusion_err(e))
+            }
+        }
     }
 
     pub fn table_exist(&self, name: &str) -> PyDataFusionResult<bool> {
