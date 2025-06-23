@@ -46,7 +46,11 @@ from .context import (
     SessionContext,
     SQLOptions,
 )
-from .dataframe import DataFrame
+from .dataframe import (
+    DataFrame,
+    ParquetColumnOptions,
+    ParquetWriterOptions,
+)
 from .expr import (
     Expr,
     WindowFrame,
@@ -80,6 +84,8 @@ __all__ = [
     "ExecutionPlan",
     "Expr",
     "LogicalPlan",
+    "ParquetColumnOptions",
+    "ParquetWriterOptions",
     "RecordBatch",
     "RecordBatchStream",
     "RuntimeEnvBuilder",

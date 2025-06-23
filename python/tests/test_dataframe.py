@@ -27,6 +27,7 @@ import pyarrow.parquet as pq
 import pytest
 from datafusion import (
     DataFrame,
+    ParquetWriterOptions,
     SessionContext,
     WindowFrame,
     column,
@@ -1630,6 +1631,22 @@ def test_write_compressed_parquet_default_compression_level(df, tmp_path, compre
     path = tmp_path
 
     df.write_parquet(str(path), compression=compression)
+
+
+def test_write_parquet_options(df, tmp_path):
+    options = ParquetWriterOptions(compression="gzip", compression_level=6)
+    df.write_parquet(str(tmp_path), options)
+
+    result = pq.read_table(str(tmp_path)).to_pydict()
+    expected = df.to_pydict()
+
+    assert result == expected
+
+
+def test_write_parquet_options_error(df, tmp_path):
+    options = ParquetWriterOptions(compression="gzip", compression_level=6)
+    with pytest.raises(ValueError):
+        df.write_parquet(str(tmp_path), options, compression_level=1)
 
 
 def test_dataframe_export(df) -> None:
