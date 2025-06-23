@@ -53,6 +53,7 @@ if TYPE_CHECKING:
     from datafusion._internal import DataFrame as DataFrameInternal
     from datafusion._internal import expr as expr_internal
 
+from dataclasses import dataclass
 from enum import Enum
 
 
@@ -112,6 +113,19 @@ class Compression(Enum):
         if self == Compression.ZSTD:
             return 4
         return None
+
+
+@dataclass
+class ParquetWriterOptions:
+    """Options for writing Parquet files."""
+
+    compression: str | Compression = Compression.ZSTD
+    compression_level: int | None = None
+
+
+@dataclass
+class ParquetColumnOptions:
+    """Placeholder for column-specific options."""
 
 
 class DataFrame:
@@ -704,7 +718,7 @@ class DataFrame:
     def write_parquet(
         self,
         path: str | pathlib.Path,
-        compression: Union[str, Compression] = Compression.ZSTD,
+        compression: Union[str, Compression, ParquetWriterOptions] = Compression.ZSTD,
         compression_level: int | None = None,
     ) -> None:
         """Execute the :py:class:`DataFrame` and write the results to a Parquet file.
@@ -725,7 +739,13 @@ class DataFrame:
                 recommended range is 1 to 22, with the default being 4. Higher levels
                 provide better compression but slower speed.
         """
-        # Convert string to Compression enum if necessary
+        if isinstance(compression, ParquetWriterOptions):
+            if compression_level is not None:
+                msg = "compression_level should be None when using ParquetWriterOptions"
+                raise ValueError(msg)
+            self.write_parquet_with_options(path, compression)
+            return
+
         if isinstance(compression, str):
             compression = Compression.from_str(compression)
 
@@ -736,6 +756,28 @@ class DataFrame:
             compression_level = compression.get_default_level()
 
         self.df.write_parquet(str(path), compression.value, compression_level)
+
+    def write_parquet_with_options(
+        self, path: str | pathlib.Path, options: ParquetWriterOptions
+    ) -> None:
+        """Execute the :py:class:`DataFrame` and write the results to Parquet.
+
+        Args:
+            path: Destination path.
+            options: Parquet writer options.
+        """
+        compression = options.compression
+        if isinstance(compression, str):
+            compression = Compression.from_str(compression)
+
+        level = options.compression_level
+        if (
+            compression in {Compression.GZIP, Compression.BROTLI, Compression.ZSTD}
+            and level is None
+        ):
+            level = compression.get_default_level()
+
+        self.df.write_parquet(str(path), compression.value, level)
 
     def write_json(self, path: str | pathlib.Path) -> None:
         """Execute the :py:class:`DataFrame` and write the results to a JSON file.
