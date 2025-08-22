@@ -59,11 +59,10 @@ Exporting from DataFusion
 
 DataFusion DataFrames implement ``__arrow_c_stream__`` PyCapsule interface, so any
 Python library that accepts these can import a DataFusion DataFrame directly.
-
-.. warning::
-    It is important to note that this will cause the DataFrame execution to happen, which may be
-    a time consuming task. That is, you will cause a
-    :py:func:`datafusion.dataframe.DataFrame.collect` operation call to occur.
+The exported stream yields record batches lazily using DataFusion's
+``execute_stream`` mechanism, allowing consumers to process results incrementally
+without buffering the entire dataset in memory. This streaming behavior helps
+avoid out-of-memory failures when working with large queries.
 
 
 .. ipython:: python

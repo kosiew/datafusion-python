@@ -20,6 +20,7 @@ import os
 import re
 import threading
 import time
+import tracemalloc
 from typing import Any
 
 import pyarrow as pa
@@ -1565,6 +1566,23 @@ async def test_execute_stream_partitioned_async(df):
         # Ensure the stream is exhausted after iteration
         remaining_batches = [batch async for batch in stream]
         assert not remaining_batches
+
+
+def test_arrow_c_stream_streaming(large_df):
+    df = large_df.repartition(4)
+    capsule = df.__arrow_c_stream__()
+    ctypes.pythonapi.PyCapsule_GetPointer.restype = ctypes.c_void_p
+    ctypes.pythonapi.PyCapsule_GetPointer.argtypes = [ctypes.py_object, ctypes.c_char_p]
+    ptr = ctypes.pythonapi.PyCapsule_GetPointer(capsule, b"arrow_array_stream")
+    reader = pa.RecordBatchReader._import_from_c(ptr)
+
+    tracemalloc.start()
+    batch_count = sum(1 for _ in reader)
+    current, peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+
+    assert batch_count > 1
+    assert peak < 50 * MB
 
 
 def test_empty_to_arrow_table(df):

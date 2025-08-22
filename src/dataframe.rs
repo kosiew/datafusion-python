@@ -19,13 +19,13 @@ use std::collections::HashMap;
 use std::ffi::CString;
 use std::sync::Arc;
 
-use arrow::array::{new_null_array, RecordBatch, RecordBatchIterator, RecordBatchReader};
+use arrow::array::{new_null_array, RecordBatch, RecordBatchReader};
 use arrow::compute::can_cast_types;
 use arrow::error::ArrowError;
 use arrow::ffi::FFI_ArrowSchema;
 use arrow::ffi_stream::FFI_ArrowArrayStream;
 use arrow::pyarrow::FromPyArrow;
-use datafusion::arrow::datatypes::Schema;
+use datafusion::arrow::datatypes::{Schema, SchemaRef};
 use datafusion::arrow::pyarrow::{PyArrowType, ToPyArrow};
 use datafusion::arrow::util::pretty;
 use datafusion::common::UnnestOptions;
@@ -879,8 +879,17 @@ impl PyDataFrame {
         py: Python<'py>,
         requested_schema: Option<Bound<'py, PyCapsule>>,
     ) -> PyDataFusionResult<Bound<'py, PyCapsule>> {
-        let mut batches = wait_for_future(py, self.df.as_ref().clone().collect())??;
-        let mut schema: Schema = self.df.schema().to_owned().into();
+        // execute query lazily using a stream
+        let rt = &get_tokio_runtime().0;
+        let df = self.df.as_ref().clone();
+        let fut: JoinHandle<datafusion::common::Result<SendableRecordBatchStream>> =
+            rt.spawn(async move { df.execute_stream().await });
+        let stream = wait_for_future(py, async { fut.await.map_err(to_datafusion_err) })???;
+
+        // Determine the schema and handle optional projection
+        let stream_schema = stream.schema();
+        let mut schema: Schema = stream_schema.as_ref().to_owned().into();
+        let mut project = false;
 
         if let Some(schema_capsule) = requested_schema {
             validate_pycapsule(&schema_capsule, "arrow_schema")?;
@@ -889,17 +898,12 @@ impl PyDataFrame {
             let desired_schema = Schema::try_from(schema_ptr)?;
 
             schema = project_schema(schema, desired_schema)?;
-
-            batches = batches
-                .into_iter()
-                .map(|record_batch| record_batch_into_schema(record_batch, &schema))
-                .collect::<Result<Vec<RecordBatch>, ArrowError>>()?;
+            project = schema != *stream_schema.as_ref();
         }
 
-        let batches_wrapped = batches.into_iter().map(Ok);
-
-        let reader = RecordBatchIterator::new(batches_wrapped, Arc::new(schema));
-        let reader: Box<dyn RecordBatchReader + Send> = Box::new(reader);
+        let schema_ref: SchemaRef = Arc::new(schema);
+        let reader: Box<dyn RecordBatchReader + Send> =
+            Box::new(ArrowStreamReader::new(stream, schema_ref, project));
 
         let ffi_stream = FFI_ArrowArrayStream::new(reader);
         let stream_capsule_name = CString::new("arrow_array_stream").unwrap();
@@ -991,6 +995,51 @@ impl PyDataFrame {
 
         let df = self.df.as_ref().clone().fill_null(scalar_value, cols)?;
         Ok(Self::new(df))
+    }
+}
+
+struct ArrowStreamReader {
+    stream: SendableRecordBatchStream,
+    schema: SchemaRef,
+    project: bool,
+}
+
+impl ArrowStreamReader {
+    fn new(stream: SendableRecordBatchStream, schema: SchemaRef, project: bool) -> Self {
+        Self {
+            stream,
+            schema,
+            project,
+        }
+    }
+}
+
+impl RecordBatchReader for ArrowStreamReader {
+    fn schema(&self) -> SchemaRef {
+        self.schema.clone()
+    }
+}
+
+impl Iterator for ArrowStreamReader {
+    type Item = Result<RecordBatch, ArrowError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let rt = &get_tokio_runtime().0;
+        match rt.block_on(self.stream.next()) {
+            Some(Ok(batch)) => {
+                let batch = if self.project {
+                    match record_batch_into_schema(batch, self.schema.as_ref()) {
+                        Ok(b) => b,
+                        Err(e) => return Some(Err(e)),
+                    }
+                } else {
+                    batch
+                };
+                Some(Ok(batch))
+            }
+            Some(Err(e)) => Some(Err(ArrowError::from(e))),
+            None => None,
+        }
     }
 }
 
