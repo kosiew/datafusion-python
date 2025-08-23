@@ -42,6 +42,8 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::pybacked::PyBackedStr;
 use pyo3::types::{PyCapsule, PyList, PyTuple, PyTupleMethods};
+use tokio::task::JoinHandle;
+use tokio::time::{sleep, Duration};
 
 use crate::catalog::PyTable;
 use crate::errors::{py_datafusion_err, PyDataFusionError};
@@ -1011,8 +1013,29 @@ impl Iterator for ArrowStreamReader {
     type Item = Result<RecordBatch, ArrowError>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        const INTERVAL_CHECK_SIGNALS: Duration = Duration::from_millis(1_000);
         let rt = &get_tokio_runtime().0;
-        match rt.block_on(crate::record_batch::pull_next_batch(&mut self.stream)) {
+        let fut = self.stream.next();
+
+        let result = Python::with_gil(|py| {
+            py.allow_threads(|| {
+                rt.block_on(async {
+                    tokio::pin!(fut);
+                    loop {
+                        tokio::select! {
+                            res = &mut fut => break res,
+                            _ = sleep(INTERVAL_CHECK_SIGNALS) => {
+                                if let Err(err) = Python::with_gil(|py| py.check_signals()) {
+                                    break Some(Err(to_datafusion_err(err)));
+                                }
+                            }
+                        }
+                    }
+                })
+            })
+        });
+
+        match result {
             Some(Ok(batch)) => {
                 let batch = if self.project {
                     match record_batch_into_schema(batch, self.schema.as_ref()) {
