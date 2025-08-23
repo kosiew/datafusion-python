@@ -42,16 +42,16 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::pybacked::PyBackedStr;
 use pyo3::types::{PyCapsule, PyList, PyTuple, PyTupleMethods};
-use tokio::task::JoinHandle;
 
 use crate::catalog::PyTable;
-use crate::errors::{py_datafusion_err, to_datafusion_err, PyDataFusionError};
+use crate::errors::{py_datafusion_err, PyDataFusionError};
 use crate::expr::sort_expr::to_sort_expressions;
 use crate::physical_plan::PyExecutionPlan;
 use crate::record_batch::PyRecordBatchStream;
 use crate::sql::logical::PyLogicalPlan;
 use crate::utils::{
-    get_tokio_runtime, is_ipython_env, py_obj_to_scalar_value, validate_pycapsule, wait_for_future,
+    get_tokio_runtime, is_ipython_env, py_obj_to_scalar_value, spawn_and_wait, validate_pycapsule,
+    wait_for_future,
 };
 use crate::{
     errors::PyDataFusionResult,
@@ -880,11 +880,8 @@ impl PyDataFrame {
         requested_schema: Option<Bound<'py, PyCapsule>>,
     ) -> PyDataFusionResult<Bound<'py, PyCapsule>> {
         // execute query lazily using a stream
-        let rt = &get_tokio_runtime().0;
         let df = self.df.as_ref().clone();
-        let fut: JoinHandle<datafusion::common::Result<SendableRecordBatchStream>> =
-            rt.spawn(async move { df.execute_stream().await });
-        let stream = wait_for_future(py, async { fut.await.map_err(to_datafusion_err) })???;
+        let stream = spawn_and_wait(py, async move { df.execute_stream().await })?;
 
         // Determine the schema and handle optional projection
         let stream_schema = stream.schema();
@@ -911,24 +908,14 @@ impl PyDataFrame {
     }
 
     fn execute_stream(&self, py: Python) -> PyDataFusionResult<PyRecordBatchStream> {
-        // create a Tokio runtime to run the async code
-        let rt = &get_tokio_runtime().0;
         let df = self.df.as_ref().clone();
-        let fut: JoinHandle<datafusion::common::Result<SendableRecordBatchStream>> =
-            rt.spawn(async move { df.execute_stream().await });
-        let stream = wait_for_future(py, async { fut.await.map_err(to_datafusion_err) })???;
+        let stream = spawn_and_wait(py, async move { df.execute_stream().await })?;
         Ok(PyRecordBatchStream::new(stream))
     }
 
     fn execute_stream_partitioned(&self, py: Python) -> PyResult<Vec<PyRecordBatchStream>> {
-        // create a Tokio runtime to run the async code
-        let rt = &get_tokio_runtime().0;
         let df = self.df.as_ref().clone();
-        let fut: JoinHandle<datafusion::common::Result<Vec<SendableRecordBatchStream>>> =
-            rt.spawn(async move { df.execute_stream_partitioned().await });
-        let stream = wait_for_future(py, async { fut.await.map_err(to_datafusion_err) })?
-            .map_err(py_datafusion_err)?
-            .map_err(py_datafusion_err)?;
+        let stream = spawn_and_wait(py, async move { df.execute_stream_partitioned().await })?;
 
         Ok(stream.into_iter().map(PyRecordBatchStream::new).collect())
     }
@@ -1025,7 +1012,7 @@ impl Iterator for ArrowStreamReader {
 
     fn next(&mut self) -> Option<Self::Item> {
         let rt = &get_tokio_runtime().0;
-        match rt.block_on(self.stream.next()) {
+        match rt.block_on(crate::record_batch::pull_next_batch(&mut self.stream)) {
             Some(Ok(batch)) => {
                 let batch = if self.project {
                     match record_batch_into_schema(batch, self.schema.as_ref()) {

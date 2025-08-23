@@ -59,6 +59,12 @@ impl PyRecordBatchStream {
     }
 }
 
+pub(crate) async fn pull_next_batch(
+    stream: &mut SendableRecordBatchStream,
+) -> Option<datafusion::common::Result<RecordBatch>> {
+    stream.next().await
+}
+
 #[pymethods]
 impl PyRecordBatchStream {
     fn next(&mut self, py: Python) -> PyResult<PyRecordBatch> {
@@ -89,7 +95,7 @@ async fn next_stream(
     sync: bool,
 ) -> PyResult<PyRecordBatch> {
     let mut stream = stream.lock().await;
-    match stream.next().await {
+    match pull_next_batch(&mut stream).await {
         Some(Ok(batch)) => Ok(batch.into()),
         Some(Err(e)) => Err(PyDataFusionError::from(e))?,
         None => {

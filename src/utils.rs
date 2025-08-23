@@ -17,7 +17,7 @@
 
 use crate::{
     common::data_type::PyScalarValue,
-    errors::{PyDataFusionError, PyDataFusionResult},
+    errors::{to_datafusion_err, PyDataFusionError, PyDataFusionResult},
     TokioRuntime,
 };
 use datafusion::{
@@ -82,6 +82,18 @@ where
             }
         })
     })
+}
+
+pub fn spawn_and_wait<F, T>(py: Python, fut: F) -> PyDataFusionResult<T>
+where
+    F: Future<Output = datafusion::common::Result<T>> + Send + 'static,
+    T: Send + 'static,
+{
+    let rt = &get_tokio_runtime().0;
+    let handle = rt.spawn(fut);
+    Ok(wait_for_future(py, async {
+        handle.await.map_err(to_datafusion_err)
+    })???)
 }
 
 pub(crate) fn parse_volatility(value: &str) -> PyDataFusionResult<Volatility> {
