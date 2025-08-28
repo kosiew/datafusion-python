@@ -1046,10 +1046,14 @@ impl Iterator for ArrowStreamReader {
 fn print_dataframe(py: Python, df: DataFrame) -> PyDataFusionResult<()> {
     // Get string representation of record batches
     let batches = wait_for_future(py, df.collect())??;
-    let batches_as_string = pretty::pretty_format_batches(&batches);
-    let result = match batches_as_string {
-        Ok(batch) => format!("DataFrame()\n{batch}"),
-        Err(err) => format!("Error: {:?}", err.to_string()),
+    let is_empty = batches.is_empty() || batches.iter().all(|b| b.num_rows() == 0);
+    let result = if is_empty {
+        "Empty DataFrame".to_string()
+    } else {
+        match pretty::pretty_format_batches(&batches) {
+            Ok(batch) => format!("DataFrame()\n{batch}"),
+            Err(err) => format!("Error: {:?}", err.to_string()),
+        }
     };
 
     // Import the Python 'builtins' module to access the print function

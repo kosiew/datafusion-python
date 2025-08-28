@@ -1464,6 +1464,14 @@ def test_empty_to_pandas(df):
     assert set(pandas_df.columns) == {"a", "b", "c"}
 
 
+def test_show_empty_dataframe(df, capsys):
+    """Ensure showing an empty DataFrame prints a helpful message."""
+    empty_df = df.limit(0)
+    empty_df.show()
+    captured = capsys.readouterr()
+    assert "Empty DataFrame" in captured.out
+
+
 def test_to_polars(df):
     # Skip test if polars is not installed
     pl = pytest.importorskip("polars")
