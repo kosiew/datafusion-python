@@ -168,6 +168,9 @@ For large outputs, prefer engine-level writers such as ``df.write_parquet()``
 or other DataFusion writers. These stream data directly to the destination and
 avoid buffering the entire dataset in Python.
 
+For more on parallel record batch conversion and the Python GIL, see
+:doc:`collect-gil`.
+
 HTML Rendering
 --------------
 
@@ -226,3 +229,4 @@ For a complete list of available functions, see the :py:mod:`datafusion.function
    :maxdepth: 1
 
    rendering
+   collect-gil
