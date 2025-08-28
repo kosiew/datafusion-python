@@ -45,7 +45,10 @@ use crate::udaf::PyAggregateUDF;
 use crate::udf::PyScalarUDF;
 use crate::udtf::PyTableFunction;
 use crate::udwf::PyWindowUDF;
-use crate::utils::{get_global_ctx, spawn_and_wait, validate_pycapsule, wait_for_future};
+use crate::utils::{
+    get_global_ctx, init_global_rayon_pool, spawn_and_wait, validate_pycapsule,
+    wait_for_future,
+};
 use datafusion::arrow::datatypes::{DataType, Schema, SchemaRef};
 use datafusion::arrow::pyarrow::PyArrowType;
 use datafusion::arrow::record_batch::RecordBatch;
@@ -313,6 +316,7 @@ impl PySessionContext {
         } else {
             SessionConfig::default().with_information_schema(true)
         };
+        init_global_rayon_pool(config.target_partitions());
         let runtime_env_builder = if let Some(c) = runtime {
             c.builder
         } else {

@@ -28,6 +28,7 @@ use futures::StreamExt;
 use pyo3::prelude::*;
 use pyo3::{exceptions::PyValueError, types::PyCapsule};
 use std::{future::Future, sync::OnceLock, time::Duration};
+use rayon::ThreadPoolBuilder;
 use tokio::{runtime::Runtime, time::sleep};
 /// Utility to get the Tokio Runtime from Python
 #[inline]
@@ -57,6 +58,16 @@ pub(crate) fn is_ipython_env(py: Python) -> &'static bool {
 pub(crate) fn get_global_ctx() -> &'static SessionContext {
     static CTX: OnceLock<SessionContext> = OnceLock::new();
     CTX.get_or_init(SessionContext::new)
+}
+
+#[inline]
+pub(crate) fn init_global_rayon_pool(num_threads: usize) {
+    static RAYON_POOL: OnceLock<()> = OnceLock::new();
+    RAYON_POOL.get_or_init(|| {
+        let _ = ThreadPoolBuilder::new()
+            .num_threads(num_threads)
+            .build_global();
+    });
 }
 
 /// Utility to collect rust futures with GIL released and respond to

@@ -52,8 +52,8 @@ use crate::physical_plan::PyExecutionPlan;
 use crate::record_batch::PyRecordBatchStream;
 use crate::sql::logical::PyLogicalPlan;
 use crate::utils::{
-    get_tokio_runtime, is_ipython_env, py_obj_to_scalar_value, spawn_and_wait, validate_pycapsule,
-    wait_for_future, wait_for_stream_next,
+    get_tokio_runtime, init_global_rayon_pool, is_ipython_env, py_obj_to_scalar_value,
+    spawn_and_wait, validate_pycapsule, wait_for_future, wait_for_stream_next,
 };
 use crate::{
     errors::PyDataFusionResult,
@@ -364,6 +364,7 @@ fn record_batches_to_pyarrow(
     record_batch_class: &Bound<'_, PyAny>,
     batches: Vec<RecordBatch>,
 ) -> PyResult<Vec<PyObject>> {
+    init_global_rayon_pool(std::thread::available_parallelism().map_or(1, |n| n.get()));
     let ffi_batches: Vec<(FFI_ArrowArray, FFI_ArrowSchema)> = py
         .allow_threads(|| {
             batches
