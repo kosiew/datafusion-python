@@ -15,13 +15,20 @@
 # specific language governing permissions and limitations
 # under the License.
 
+from __future__ import annotations
+
+import math
 import time
 
 import pyarrow as pa
 from datafusion import SessionContext
 
 
-def run(n_batches: int = 8, batch_size: int = 1_000_000) -> None:
+def run(
+    n_batches: int = 8,
+    batch_size: int = 1_000_000,
+    n_partitions: int | None = None,
+) -> None:
     ctx = SessionContext()
     batches = []
     for i in range(n_batches):
@@ -29,7 +36,14 @@ def run(n_batches: int = 8, batch_size: int = 1_000_000) -> None:
         arr = pa.array(range(start, start + batch_size))
         batches.append(pa.record_batch([arr], names=["a"]))
 
-    df = ctx.create_dataframe([batches])
+    if n_partitions is None:
+        n_partitions = n_batches
+    n_partitions = max(1, min(n_partitions, n_batches))
+    partition_size = math.ceil(len(batches) / n_partitions)
+    partitions = [
+        batches[i : i + partition_size] for i in range(0, len(batches), partition_size)
+    ]
+    df = ctx.create_dataframe(partitions)
 
     start = time.perf_counter()
     df.collect()
@@ -38,4 +52,14 @@ def run(n_batches: int = 8, batch_size: int = 1_000_000) -> None:
 
 
 if __name__ == "__main__":
-    run()
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--partitions",
+        type=int,
+        default=None,
+        help="number of partitions to create (defaults to one per batch)",
+    )
+    args = parser.parse_args()
+    run(n_partitions=args.partitions)
