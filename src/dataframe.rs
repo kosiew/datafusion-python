@@ -43,17 +43,16 @@ use pyo3::prelude::*;
 use pyo3::pybacked::PyBackedStr;
 use pyo3::types::{PyCapsule, PyList, PyTuple, PyTupleMethods};
 use rayon::prelude::*;
-use tokio::time::{sleep, Duration};
 
 use crate::catalog::PyTable;
-use crate::errors::{py_datafusion_err, to_datafusion_err, PyDataFusionError};
+use crate::errors::{py_datafusion_err, PyDataFusionError};
 use crate::expr::sort_expr::to_sort_expressions;
 use crate::physical_plan::PyExecutionPlan;
 use crate::record_batch::PyRecordBatchStream;
 use crate::sql::logical::PyLogicalPlan;
 use crate::utils::{
     get_tokio_runtime, is_ipython_env, py_obj_to_scalar_value, spawn_and_wait, validate_pycapsule,
-    wait_for_future,
+    wait_for_future, wait_for_stream_next,
 };
 use crate::{
     errors::PyDataFusionResult,
@@ -1018,30 +1017,10 @@ impl Iterator for ArrowStreamReader {
     type Item = Result<RecordBatch, ArrowError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        const INTERVAL_CHECK_SIGNALS: Duration = Duration::from_millis(1_000);
-        let rt = &get_tokio_runtime().0;
-        let fut = self.stream.next();
-
-        let result = Python::with_gil(|py| {
-            py.allow_threads(|| {
-                rt.block_on(async {
-                    tokio::pin!(fut);
-                    loop {
-                        tokio::select! {
-                            res = &mut fut => break res,
-                            _ = sleep(INTERVAL_CHECK_SIGNALS) => {
-                                if let Err(err) = Python::with_gil(|py| py.check_signals()) {
-                                    break Some(Err(to_datafusion_err(err)));
-                                }
-                            }
-                        }
-                    }
-                })
-            })
-        });
+        let result = Python::with_gil(|py| wait_for_stream_next(py, &mut self.stream));
 
         match result {
-            Some(Ok(batch)) => {
+            Ok(Some(batch)) => {
                 let batch = if self.project {
                     match record_batch_into_schema(batch, self.schema.as_ref()) {
                         Ok(b) => b,
@@ -1052,8 +1031,8 @@ impl Iterator for ArrowStreamReader {
                 };
                 Some(Ok(batch))
             }
-            Some(Err(e)) => Some(Err(ArrowError::from(e))),
-            None => None,
+            Ok(None) => None,
+            Err(e) => Some(Err(ArrowError::from(e))),
         }
     }
 }

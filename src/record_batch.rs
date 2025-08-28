@@ -18,7 +18,7 @@
 use std::sync::Arc;
 
 use crate::errors::PyDataFusionError;
-use crate::utils::wait_for_future;
+use crate::utils::{wait_for_future, wait_for_stream_next};
 use datafusion::arrow::pyarrow::ToPyArrow;
 use datafusion::arrow::record_batch::RecordBatch;
 use datafusion::physical_plan::SendableRecordBatchStream;
@@ -59,17 +59,14 @@ impl PyRecordBatchStream {
     }
 }
 
-pub(crate) async fn pull_next_batch(
-    stream: &mut SendableRecordBatchStream,
-) -> Option<datafusion::common::Result<RecordBatch>> {
-    stream.next().await
-}
-
 #[pymethods]
 impl PyRecordBatchStream {
     fn next(&mut self, py: Python) -> PyResult<PyRecordBatch> {
-        let stream = self.stream.clone();
-        wait_for_future(py, next_stream(stream, true))?
+        let mut stream = wait_for_future(py, self.stream.lock())?;
+        match wait_for_stream_next(py, &mut stream).map_err(PyDataFusionError::from)? {
+            Some(batch) => Ok(batch.into()),
+            None => Err(PyStopIteration::new_err("stream exhausted")),
+        }
     }
 
     fn __next__(&mut self, py: Python) -> PyResult<PyRecordBatch> {
@@ -95,7 +92,7 @@ async fn next_stream(
     sync: bool,
 ) -> PyResult<PyRecordBatch> {
     let mut stream = stream.lock().await;
-    match pull_next_batch(&mut stream).await {
+    match stream.next().await {
         Some(Ok(batch)) => Ok(batch.into()),
         Some(Err(e)) => Err(PyDataFusionError::from(e))?,
         None => {
