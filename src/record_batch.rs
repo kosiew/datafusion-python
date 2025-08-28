@@ -61,11 +61,7 @@ impl PyRecordBatchStream {
 #[pymethods]
 impl PyRecordBatchStream {
     fn next(&mut self, py: Python) -> PyResult<PyRecordBatch> {
-        let mut stream = wait_for_future(py, self.stream.lock())?;
-        match wait_for_stream_next(py, &mut stream).map_err(PyDataFusionError::from)? {
-            Some(batch) => Ok(batch.into()),
-            None => Err(PyStopIteration::new_err("stream exhausted")),
-        }
+        wait_for_future(py, next_stream(self.stream.clone(), true))?
     }
 
     fn __next__(&mut self, py: Python) -> PyResult<PyRecordBatch> {
