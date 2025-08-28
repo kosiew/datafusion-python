@@ -407,6 +407,11 @@ fn record_batches_to_pyarrow(
         .collect()
 }
 
+/// Fetch the `pyarrow.RecordBatch` class
+fn pyarrow_record_batch_class(py: Python<'_>) -> PyResult<Bound<'_, PyAny>> {
+    py.import("pyarrow")?.getattr("RecordBatch")
+}
+
 #[pymethods]
 impl PyDataFrame {
     /// Enable selection for `df[col]`, `df[col1, col2, col3]`, and `df[[col1, col2, col3]]`
@@ -579,7 +584,7 @@ impl PyDataFrame {
             .map_err(PyDataFusionError::from)?;
 
         // Fetch pyarrow.RecordBatch class once per call and reuse it
-        let record_batch_class = py.import("pyarrow")?.getattr("RecordBatch")?;
+        let record_batch_class = pyarrow_record_batch_class(py)?;
 
         record_batches_to_pyarrow(py, &record_batch_class, batches)
     }
@@ -597,7 +602,7 @@ impl PyDataFrame {
             .map_err(PyDataFusionError::from)?;
 
         // Fetch pyarrow.RecordBatch class once and reuse it for all partitions
-        let record_batch_class = py.import("pyarrow")?.getattr("RecordBatch")?;
+        let record_batch_class = pyarrow_record_batch_class(py)?;
 
         batches
             .into_iter()
