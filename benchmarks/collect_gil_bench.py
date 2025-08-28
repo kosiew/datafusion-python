@@ -23,14 +23,13 @@ from datafusion import SessionContext
 
 def run(n_batches: int = 8, batch_size: int = 1_000_000) -> None:
     ctx = SessionContext()
-    partitions = []
+    batches = []
     for i in range(n_batches):
         start = i * batch_size
         arr = pa.array(range(start, start + batch_size))
-        batch = pa.record_batch([arr], names=["a"])
-        partitions.append([batch])  # Each batch in its own partition
+        batches.append(pa.record_batch([arr], names=["a"]))
 
-    df = ctx.create_dataframe(partitions)
+    df = ctx.create_dataframe([batches])
 
     start = time.perf_counter()
     df.collect()
