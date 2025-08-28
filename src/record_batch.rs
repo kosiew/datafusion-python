@@ -22,7 +22,6 @@ use crate::utils::{wait_for_future, wait_for_stream_next};
 use datafusion::arrow::pyarrow::ToPyArrow;
 use datafusion::arrow::record_batch::RecordBatch;
 use datafusion::physical_plan::SendableRecordBatchStream;
-use futures::StreamExt;
 use pyo3::exceptions::{PyStopAsyncIteration, PyStopIteration};
 use pyo3::prelude::*;
 use pyo3::{pyclass, pymethods, PyObject, PyResult, Python};
@@ -91,10 +90,15 @@ async fn next_stream(
     stream: Arc<Mutex<SendableRecordBatchStream>>,
     sync: bool,
 ) -> PyResult<PyRecordBatch> {
-    let mut stream = stream.lock().await;
-    match stream.next().await {
-        Some(Ok(batch)) => Ok(batch.into()),
-        Some(Err(e)) => Err(PyDataFusionError::from(e))?,
+    let result = tokio::task::spawn_blocking(move || {
+        let mut stream = stream.blocking_lock();
+        Python::with_gil(|py| wait_for_stream_next(py, &mut stream))
+    })
+    .await
+    .map_err(|e| PyDataFusionError::Common(e.to_string()))?;
+
+    match result.map_err(PyDataFusionError::from)? {
+        Some(batch) => Ok(batch.into()),
         None => {
             // Depending on whether the iteration is sync or not, we raise either a
             // StopIteration or a StopAsyncIteration
