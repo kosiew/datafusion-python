@@ -1586,7 +1586,7 @@ def test_arrow_c_stream_streaming(large_df):
 
     tracemalloc.start()
     batch_count = sum(1 for _ in reader)
-    current, peak = tracemalloc.get_traced_memory()
+    _current, peak = tracemalloc.get_traced_memory()
     tracemalloc.stop()
 
     assert batch_count > 1
