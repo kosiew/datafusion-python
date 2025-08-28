@@ -17,12 +17,13 @@
 
 use std::collections::HashMap;
 use std::ffi::CString;
+use std::ptr::addr_of;
 use std::sync::Arc;
 
-use arrow::array::{new_null_array, RecordBatch, RecordBatchReader};
+use arrow::array::{new_null_array, RecordBatch, RecordBatchReader, StructArray};
 use arrow::compute::can_cast_types;
 use arrow::error::ArrowError;
-use arrow::ffi::FFI_ArrowSchema;
+use arrow::ffi::{self, FFI_ArrowArray, FFI_ArrowSchema};
 use arrow::ffi_stream::FFI_ArrowArrayStream;
 use arrow::pyarrow::FromPyArrow;
 use datafusion::arrow::datatypes::{Schema, SchemaRef};
@@ -39,6 +40,7 @@ use datafusion::prelude::*;
 use datafusion_ffi::table_provider::FFI_TableProvider;
 use futures::{StreamExt, TryStreamExt};
 use pyo3::exceptions::PyValueError;
+use pyo3::ffi::Py_uintptr_t;
 use pyo3::prelude::*;
 use pyo3::pybacked::PyBackedStr;
 use pyo3::types::{PyCapsule, PyList, PyTuple, PyTupleMethods};
@@ -526,18 +528,34 @@ impl PyDataFrame {
         let batches = wait_for_future(py, self.df.as_ref().clone().collect())?
             .map_err(PyDataFusionError::from)?;
 
-        // Profiling `rb.to_pyarrow(py)` showed that the conversion holds the
-        // Python GIL for almost all of its execution. Serially converting a
-        // large number of batches therefore throttles CPU utilisation.  Run the
-        // conversions in Rayon threads and only acquire the GIL when creating
-        // the final PyArrow objects so the CPU intensive work happens in
-        // parallel.
-        py.allow_threads(move || {
-            batches
-                .into_par_iter()
-                .map(|rb| Python::with_gil(|py| rb.to_pyarrow(py)))
-                .collect()
-        })
+        let ffi_batches: Vec<(FFI_ArrowArray, FFI_ArrowSchema)> = py
+            .allow_threads(|| {
+                batches
+                    .into_par_iter()
+                    .map(|rb| {
+                        let sa: StructArray = rb.into();
+                        ffi::to_ffi(&sa.to_data())
+                    })
+                    .collect()
+            })
+            .map_err(PyDataFusionError::from)?;
+
+        let module = py.import("pyarrow")?;
+        let class = module.getattr("RecordBatch")?;
+        ffi_batches
+            .into_iter()
+            .map(|(array, schema)| {
+                class
+                    .call_method1(
+                        "_import_from_c",
+                        (
+                            addr_of!(array) as Py_uintptr_t,
+                            addr_of!(schema) as Py_uintptr_t,
+                        ),
+                    )
+                    .map(Into::into)
+            })
+            .collect()
     }
 
     /// Cache DataFrame.
@@ -554,7 +572,34 @@ impl PyDataFrame {
 
         batches
             .into_iter()
-            .map(|rbs| rbs.into_iter().map(|rb| rb.to_pyarrow(py)).collect())
+            .map(|rbs| {
+                let ffi_batches: Vec<(FFI_ArrowArray, FFI_ArrowSchema)> = py
+                    .allow_threads(|| {
+                        rbs.into_par_iter()
+                            .map(|rb| {
+                                let sa: StructArray = rb.into();
+                                ffi::to_ffi(&sa.to_data())
+                            })
+                            .collect()
+                    })
+                    .map_err(PyDataFusionError::from)?;
+                let module = py.import("pyarrow")?;
+                let class = module.getattr("RecordBatch")?;
+                ffi_batches
+                    .into_iter()
+                    .map(|(array, schema)| {
+                        class
+                            .call_method1(
+                                "_import_from_c",
+                                (
+                                    addr_of!(array) as Py_uintptr_t,
+                                    addr_of!(schema) as Py_uintptr_t,
+                                ),
+                            )
+                            .map(Into::into)
+                    })
+                    .collect::<PyResult<Vec<_>>>()
+            })
             .collect()
     }
 
