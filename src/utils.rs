@@ -109,9 +109,18 @@ where
 {
     let rt = &get_tokio_runtime().0;
     let handle = rt.spawn(fut);
-    Ok(wait_for_future(py, async {
-        handle.await.map_err(to_datafusion_err)
-    })???)
+    let abort_handle = handle.abort_handle();
+
+    match wait_for_future(py, async { handle.await.map_err(to_datafusion_err) }) {
+        Ok(result) => {
+            let result = result.map_err(PyDataFusionError::from)?;
+            result.map_err(PyDataFusionError::from)
+        }
+        Err(err) => {
+            abort_handle.abort();
+            Err(err.into())
+        }
+    }
 }
 
 pub(crate) fn parse_volatility(value: &str) -> PyDataFusionResult<Volatility> {
