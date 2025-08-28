@@ -1464,6 +1464,16 @@ def test_empty_to_pandas(df):
     assert set(pandas_df.columns) == {"a", "b", "c"}
 
 
+def test_show_no_batches(capsys):
+    """Ensure showing a query with no batches still prints headers."""
+    ctx = SessionContext()
+    df = ctx.sql("SELECT 1 AS a WHERE 1=0")
+    df.show()
+    captured = capsys.readouterr()
+    assert "| a |" in captured.out
+    assert "Empty DataFrame" not in captured.out
+
+
 def test_show_empty_dataframe(df, capsys):
     """Ensure showing an empty DataFrame prints a helpful message."""
     empty_df = df.limit(0)
