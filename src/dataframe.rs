@@ -357,6 +357,42 @@ impl PyDataFrame {
     }
 }
 
+/// Convert a vector of `RecordBatch` into PyArrow `RecordBatch` objects.
+///
+/// This performs the FFI conversion in parallel while releasing the GIL.
+fn record_batches_to_pyarrow(
+    py: Python<'_>,
+    record_batch_class: &Bound<'_, PyAny>,
+    batches: Vec<RecordBatch>,
+) -> PyResult<Vec<PyObject>> {
+    let ffi_batches: Vec<(FFI_ArrowArray, FFI_ArrowSchema)> = py
+        .allow_threads(|| {
+            batches
+                .into_par_iter()
+                .map(|rb| {
+                    let sa: StructArray = rb.into();
+                    ffi::to_ffi(&sa.to_data())
+                })
+                .collect::<Result<Vec<_>, ArrowError>>()
+        })
+        .map_err(PyDataFusionError::from)?;
+
+    ffi_batches
+        .into_iter()
+        .map(|(array, schema)| {
+            record_batch_class
+                .call_method1(
+                    "_import_from_c",
+                    (
+                        addr_of!(array) as Py_uintptr_t,
+                        addr_of!(schema) as Py_uintptr_t,
+                    ),
+                )
+                .map(Into::into)
+        })
+        .collect()
+}
+
 #[pymethods]
 impl PyDataFrame {
     /// Enable selection for `df[col]`, `df[col1, col2, col3]`, and `df[[col1, col2, col3]]`
@@ -531,32 +567,7 @@ impl PyDataFrame {
         // Fetch pyarrow.RecordBatch class once per call and reuse it
         let record_batch_class = py.import("pyarrow")?.getattr("RecordBatch")?;
 
-        let ffi_batches: Vec<(FFI_ArrowArray, FFI_ArrowSchema)> = py
-            .allow_threads(|| {
-                batches
-                    .into_par_iter()
-                    .map(|rb| {
-                        let sa: StructArray = rb.into();
-                        ffi::to_ffi(&sa.to_data())
-                    })
-                    .collect::<Result<Vec<_>, ArrowError>>()
-            })
-            .map_err(PyDataFusionError::from)?;
-
-        ffi_batches
-            .into_iter()
-            .map(|(array, schema)| {
-                record_batch_class
-                    .call_method1(
-                        "_import_from_c",
-                        (
-                            addr_of!(array) as Py_uintptr_t,
-                            addr_of!(schema) as Py_uintptr_t,
-                        ),
-                    )
-                    .map(Into::into)
-            })
-            .collect()
+        record_batches_to_pyarrow(py, &record_batch_class, batches)
     }
 
     /// Cache DataFrame.
@@ -576,32 +587,7 @@ impl PyDataFrame {
 
         batches
             .into_iter()
-            .map(|rbs| {
-                let ffi_batches: Vec<(FFI_ArrowArray, FFI_ArrowSchema)> = py
-                    .allow_threads(|| {
-                        rbs.into_par_iter()
-                            .map(|rb| {
-                                let sa: StructArray = rb.into();
-                                ffi::to_ffi(&sa.to_data())
-                            })
-                            .collect::<Result<Vec<_>, ArrowError>>()
-                    })
-                    .map_err(PyDataFusionError::from)?;
-                ffi_batches
-                    .into_iter()
-                    .map(|(array, schema)| {
-                        record_batch_class
-                            .call_method1(
-                                "_import_from_c",
-                                (
-                                    addr_of!(array) as Py_uintptr_t,
-                                    addr_of!(schema) as Py_uintptr_t,
-                                ),
-                            )
-                            .map(Into::into)
-                    })
-                    .collect::<PyResult<Vec<_>>>()
-            })
+            .map(|rbs| record_batches_to_pyarrow(py, &record_batch_class, rbs))
             .collect()
     }
 
