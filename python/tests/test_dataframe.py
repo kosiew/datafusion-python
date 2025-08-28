@@ -1496,11 +1496,12 @@ def test_show_no_batches(capsys):
 
 
 def test_show_empty_dataframe(df, capsys):
-    """Ensure showing an empty DataFrame prints a helpful message."""
+    """Ensure showing an empty DataFrame still prints headers."""
     empty_df = df.limit(0)
     empty_df.show()
     captured = capsys.readouterr()
-    assert "Empty DataFrame" in captured.out
+    assert "| a | b | c |" in captured.out
+    assert "Empty DataFrame" not in captured.out
 
 
 def test_to_polars(df):

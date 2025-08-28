@@ -1097,10 +1097,24 @@ impl Iterator for ArrowStreamReader {
 
 /// Print DataFrame
 fn print_dataframe(py: Python, df: DataFrame) -> PyDataFusionResult<()> {
+    // Get the schema before consuming the DataFrame
+    let schema: SchemaRef = Arc::new(df.schema().clone().into());
+
     // Get string representation of record batches
-    let batches = wait_for_future(py, df.collect())??;
-    let is_empty = batches.is_empty() || batches.iter().all(|b| b.num_rows() == 0);
-    let result = if is_empty {
+    let collected_batches = wait_for_future(py, df.collect())??;
+
+    let batches =
+        if collected_batches.is_empty() || collected_batches.iter().all(|b| b.num_rows() == 0) {
+            if schema.fields().is_empty() {
+                vec![]
+            } else {
+                vec![RecordBatch::new_empty(schema.clone())]
+            }
+        } else {
+            collected_batches
+        };
+
+    let result = if batches.is_empty() {
         "Empty DataFrame".to_string()
     } else {
         match pretty::pretty_format_batches(&batches) {
