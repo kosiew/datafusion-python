@@ -42,6 +42,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::pybacked::PyBackedStr;
 use pyo3::types::{PyCapsule, PyList, PyTuple, PyTupleMethods};
+use rayon::prelude::*;
 use tokio::time::{sleep, Duration};
 
 use crate::catalog::PyTable;
@@ -525,9 +526,14 @@ impl PyDataFrame {
     fn collect(&self, py: Python) -> PyResult<Vec<PyObject>> {
         let batches = wait_for_future(py, self.df.as_ref().clone().collect())?
             .map_err(PyDataFusionError::from)?;
-        // cannot use PyResult<Vec<RecordBatch>> return type due to
-        // https://github.com/PyO3/pyo3/issues/1813
-        batches.into_iter().map(|rb| rb.to_pyarrow(py)).collect()
+
+        // Convert batches to PyArrow outside the GIL and in parallel
+        py.allow_threads(move || {
+            batches
+                .into_par_iter()
+                .map(|rb| Python::with_gil(|py| rb.to_pyarrow(py)))
+                .collect()
+        })
     }
 
     /// Cache DataFrame.
@@ -886,7 +892,7 @@ impl PyDataFrame {
 
         // Determine the schema and handle optional projection
         let stream_schema = stream.schema();
-        let mut schema: Schema = stream_schema.as_ref().to_owned().into();
+        let mut schema: Schema = stream_schema.as_ref().to_owned();
         let mut project = false;
 
         if let Some(schema_capsule) = requested_schema {
