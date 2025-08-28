@@ -526,7 +526,12 @@ impl PyDataFrame {
         let batches = wait_for_future(py, self.df.as_ref().clone().collect())?
             .map_err(PyDataFusionError::from)?;
 
-        // Convert batches to PyArrow outside the GIL and in parallel
+        // Profiling `rb.to_pyarrow(py)` showed that the conversion holds the
+        // Python GIL for almost all of its execution. Serially converting a
+        // large number of batches therefore throttles CPU utilisation.  Run the
+        // conversions in Rayon threads and only acquire the GIL when creating
+        // the final PyArrow objects so the CPU intensive work happens in
+        // parallel.
         py.allow_threads(move || {
             batches
                 .into_par_iter()
