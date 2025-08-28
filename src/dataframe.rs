@@ -17,7 +17,6 @@
 
 use std::collections::HashMap;
 use std::ffi::CString;
-use std::ptr::addr_of;
 use std::sync::Arc;
 
 use arrow::array::{new_null_array, Array, RecordBatch, RecordBatchReader, StructArray};
@@ -380,15 +379,30 @@ fn record_batches_to_pyarrow(
     ffi_batches
         .into_iter()
         .map(|(array, schema)| {
-            record_batch_class
-                .call_method1(
-                    "_import_from_c",
-                    (
-                        addr_of!(array) as Py_uintptr_t,
-                        addr_of!(schema) as Py_uintptr_t,
-                    ),
-                )
-                .map(Into::into)
+            // Allocate the FFI structures on the heap so that PyArrow can take
+            // ownership of them. We intentionally leak these allocations on
+            // success as PyArrow will release them when the resulting
+            // `RecordBatch` is dropped on the Python side.
+            let array = Box::new(array);
+            let schema = Box::new(schema);
+            let array_ptr = Box::into_raw(array);
+            let schema_ptr = Box::into_raw(schema);
+
+            let result = record_batch_class.call_method1(
+                "_import_from_c",
+                (array_ptr as Py_uintptr_t, schema_ptr as Py_uintptr_t),
+            );
+
+            if result.is_err() {
+                // If the import fails, reconstruct the boxes so they are
+                // properly dropped to avoid leaking memory.
+                unsafe {
+                    let _ = Box::from_raw(array_ptr);
+                    let _ = Box::from_raw(schema_ptr);
+                }
+            }
+
+            result.map(Into::into)
         })
         .collect()
 }

@@ -1384,6 +1384,27 @@ def test_collect_partitioned():
     assert [[batch]] == ctx.create_dataframe([[batch]]).collect_partitioned()
 
 
+def test_collect_multiple_batches_to_pyarrow():
+    ctx = SessionContext()
+
+    batch1 = pa.RecordBatch.from_arrays(
+        [pa.array([1, 2])],
+        names=["a"],
+    )
+    batch2 = pa.RecordBatch.from_arrays(
+        [pa.array([3, 4])],
+        names=["a"],
+    )
+
+    df = ctx.create_dataframe([[batch1], [batch2]])
+
+    batches = df.collect()
+
+    assert len(batches) == 2
+    table = pa.Table.from_batches(batches)
+    assert table.column("a").to_pylist() == [1, 2, 3, 4]
+
+
 def test_union(ctx):
     batch = pa.RecordBatch.from_arrays(
         [pa.array([1, 2, 3]), pa.array([4, 5, 6])],
