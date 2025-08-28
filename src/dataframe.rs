@@ -20,7 +20,7 @@ use std::ffi::CString;
 use std::ptr::addr_of;
 use std::sync::Arc;
 
-use arrow::array::{new_null_array, RecordBatch, RecordBatchReader, StructArray};
+use arrow::array::{new_null_array, Array, RecordBatch, RecordBatchReader, StructArray};
 use arrow::compute::can_cast_types;
 use arrow::error::ArrowError;
 use arrow::ffi::{self, FFI_ArrowArray, FFI_ArrowSchema};
@@ -528,6 +528,9 @@ impl PyDataFrame {
         let batches = wait_for_future(py, self.df.as_ref().clone().collect())?
             .map_err(PyDataFusionError::from)?;
 
+        // Fetch pyarrow.RecordBatch class once per call and reuse it
+        let record_batch_class = py.import("pyarrow")?.getattr("RecordBatch")?;
+
         let ffi_batches: Vec<(FFI_ArrowArray, FFI_ArrowSchema)> = py
             .allow_threads(|| {
                 batches
@@ -536,16 +539,14 @@ impl PyDataFrame {
                         let sa: StructArray = rb.into();
                         ffi::to_ffi(&sa.to_data())
                     })
-                    .collect()
+                    .collect::<Result<Vec<_>, ArrowError>>()
             })
             .map_err(PyDataFusionError::from)?;
 
-        let module = py.import("pyarrow")?;
-        let class = module.getattr("RecordBatch")?;
         ffi_batches
             .into_iter()
             .map(|(array, schema)| {
-                class
+                record_batch_class
                     .call_method1(
                         "_import_from_c",
                         (
@@ -570,6 +571,9 @@ impl PyDataFrame {
         let batches = wait_for_future(py, self.df.as_ref().clone().collect_partitioned())?
             .map_err(PyDataFusionError::from)?;
 
+        // Fetch pyarrow.RecordBatch class once and reuse it for all partitions
+        let record_batch_class = py.import("pyarrow")?.getattr("RecordBatch")?;
+
         batches
             .into_iter()
             .map(|rbs| {
@@ -580,15 +584,13 @@ impl PyDataFrame {
                                 let sa: StructArray = rb.into();
                                 ffi::to_ffi(&sa.to_data())
                             })
-                            .collect()
+                            .collect::<Result<Vec<_>, ArrowError>>()
                     })
                     .map_err(PyDataFusionError::from)?;
-                let module = py.import("pyarrow")?;
-                let class = module.getattr("RecordBatch")?;
                 ffi_batches
                     .into_iter()
                     .map(|(array, schema)| {
-                        class
+                        record_batch_class
                             .call_method1(
                                 "_import_from_c",
                                 (
