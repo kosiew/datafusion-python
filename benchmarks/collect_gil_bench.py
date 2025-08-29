@@ -290,8 +290,10 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     
+    import os
+    rayon_threads = os.environ.get('RAYON_NUM_THREADS', 'default')
     print(f"\n\nRunning benchmark with {args.batches} batches, {args.batch_size} rows per batch")
-    print(f"Partitions: {args.partitions or args.batches}, Workload: {args.workload}")
+    print(f"Partitions: {args.partitions or args.batches}, Workload: {args.workload}, RAYON_NUM_THREADS: {rayon_threads}")
     print("-" * 60)
     
     run(
