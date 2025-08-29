@@ -36,10 +36,6 @@ A simple benchmark is provided in `benchmarks/collect_gil_bench.py`.
 Run it twice to compare serial and parallel conversions:
 
 ```bash
-RAYON_NUM_THREADS=1 python benchmarks/collect_gil_bench.py   # serial
-python benchmarks/collect_gil_bench.py                      # parallel
+RAYON_NUM_THREADS=1 python benchmarks/collect_gil_bench.py --batches 20 --partitions 8 --workload all # serial
+RAYON_NUM_THREADS=8 python benchmarks/collect_gil_bench.py --batches 20 --partitions 8 --workload all # parallel
 ```
-
-On this container, collecting 128 1 M‑row batches took around 1.5 s with
-`RAYON_NUM_THREADS=1` and 0.8 s with the default thread pool, demonstrating
-that releasing the GIL allows conversions to run in parallel.
