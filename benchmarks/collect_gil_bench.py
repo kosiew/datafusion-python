@@ -21,7 +21,8 @@ import math
 import time
 
 import pyarrow as pa
-from datafusion import SessionContext
+from datafusion import SessionContext, col
+from datafusion import functions as f
 
 
 def run(
@@ -29,6 +30,7 @@ def run(
     batch_size: int = 1_000_000,
     n_partitions: int | None = None,
 ) -> None:
+    """Aggregate column 'a' across partitions and report runtime."""
     ctx = SessionContext()
     batches = []
     for i in range(n_batches):
@@ -46,9 +48,9 @@ def run(
     df = ctx.create_dataframe(partitions)
 
     start = time.perf_counter()
-    df.collect()
+    df.aggregate([], [f.sum(col("a"))]).collect()
     duration = time.perf_counter() - start
-    print(f"{n_batches} batches collected in {duration:.3f}s")
+    print(f"{n_batches} batches aggregated in {duration:.3f}s")
 
 
 if __name__ == "__main__":
@@ -56,10 +58,26 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
+        "--batches",
+        type=int,
+        default=8,
+        help="number of input batches to generate",
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=1_000_000,
+        help="number of rows per batch",
+    )
+    parser.add_argument(
         "--partitions",
         type=int,
         default=None,
         help="number of partitions to create (defaults to one per batch)",
     )
     args = parser.parse_args()
-    run(n_partitions=args.partitions)
+    run(
+        n_batches=args.batches,
+        batch_size=args.batch_size,
+        n_partitions=args.partitions,
+    )
