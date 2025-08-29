@@ -19,10 +19,99 @@ from __future__ import annotations
 
 import math
 import time
+from typing import Callable
 
 import pyarrow as pa
-from datafusion import SessionContext, col
+from datafusion import SessionContext, col, DataFrame
 from datafusion import functions as f
+
+
+def create_partitions(batches: list[pa.RecordBatch], n_partitions: int | None = None) -> list[list[pa.RecordBatch]]:
+    """Create partitions from batches."""
+    if n_partitions is None:
+        n_partitions = len(batches)
+    n_partitions = max(1, min(n_partitions, len(batches)))
+    partition_size = math.ceil(len(batches) / n_partitions)
+    return [
+        batches[i : i + partition_size] for i in range(0, len(batches), partition_size)
+    ]
+
+
+def create_dataframe_from_batches(
+    batches: list[pa.RecordBatch], 
+    n_partitions: int | None = None
+) -> DataFrame:
+    """Create a DataFrame from batches with proper partitioning."""
+    ctx = SessionContext()
+    partitions = create_partitions(batches, n_partitions)
+    return ctx.create_dataframe(partitions)
+
+
+def time_execution(func: Callable[[], any], description: str) -> None:
+    """Time the execution of a function and print results."""
+    start = time.perf_counter()
+    result = func()
+    duration = time.perf_counter() - start
+    
+    if hasattr(result, '__len__'):
+        print(f"{description} in {duration:.3f}s, {len(result)} result rows")
+    else:
+        print(f"{description} in {duration:.3f}s")
+
+
+def create_numeric_batches(n_batches: int, batch_size: int) -> list[pa.RecordBatch]:
+    """Create batches with numeric data for simple aggregation."""
+    batches = []
+    for i in range(n_batches):
+        start = i * batch_size
+        arr = pa.array(range(start, start + batch_size))
+        batches.append(pa.record_batch([arr], names=["a"]))
+    return batches
+
+
+def create_multi_column_batches(n_batches: int, batch_size: int) -> list[pa.RecordBatch]:
+    """Create batches with multiple columns for complex computations."""
+    batches = []
+    for i in range(n_batches):
+        start = i * batch_size
+        arr_a = pa.array(range(start, start + batch_size))
+        arr_b = pa.array([x * 2.5 + 1.0 for x in range(start, start + batch_size)])
+        arr_c = pa.array([x % 1000 for x in range(start, start + batch_size)])
+        batches.append(pa.record_batch([arr_a, arr_b, arr_c], names=["a", "b", "c"]))
+    return batches
+
+
+def create_string_batches(n_batches: int, batch_size: int) -> list[pa.RecordBatch]:
+    """Create batches with string data for string processing."""
+    batches = []
+    for i in range(n_batches):
+        start = i * batch_size
+        arr_id = pa.array([f"user_{x:08d}" for x in range(start, start + batch_size)])
+        arr_email = pa.array([f"user{x}@example{x%10}.com" for x in range(start, start + batch_size)])
+        arr_category = pa.array([f"category_{x%100:03d}" for x in range(start, start + batch_size)])
+        arr_value = pa.array([x * 1.5 for x in range(start, start + batch_size)])
+        
+        batches.append(pa.record_batch(
+            [arr_id, arr_email, arr_category, arr_value], 
+            names=["id", "email", "category", "value"]
+        ))
+    return batches
+
+
+def create_groupby_batches(n_batches: int, batch_size: int) -> list[pa.RecordBatch]:
+    """Create batches for group-by operations."""
+    batches = []
+    for i in range(n_batches):
+        start = i * batch_size
+        arr_a = pa.array(range(start, start + batch_size))
+        arr_group = pa.array([x % 1000 for x in range(start, start + batch_size)])
+        arr_value = pa.array([x * 2.5 + (x % 100) for x in range(start, start + batch_size)])
+        
+        batches.append(pa.record_batch(
+            [arr_a, arr_group, arr_value], 
+            names=["a", "group_id", "value"]
+        ))
+    return batches
 
 
 def run_simple_aggregation(
@@ -31,26 +120,13 @@ def run_simple_aggregation(
     n_partitions: int | None = None,
 ) -> None:
     """Simple aggregation benchmark (original)."""
-    ctx = SessionContext()
-    batches = []
-    for i in range(n_batches):
-        start = i * batch_size
-        arr = pa.array(range(start, start + batch_size))
-        batches.append(pa.record_batch([arr], names=["a"]))
-
-    if n_partitions is None:
-        n_partitions = n_batches
-    n_partitions = max(1, min(n_partitions, n_batches))
-    partition_size = math.ceil(len(batches) / n_partitions)
-    partitions = [
-        batches[i : i + partition_size] for i in range(0, len(batches), partition_size)
-    ]
-    df = ctx.create_dataframe(partitions)
-
-    start = time.perf_counter()
-    df.aggregate([], [f.sum(col("a"))]).collect()
-    duration = time.perf_counter() - start
-    print(f"Simple aggregation: {n_batches} batches in {duration:.3f}s")
+    batches = create_numeric_batches(n_batches, batch_size)
+    df = create_dataframe_from_batches(batches, n_partitions)
+    
+    def execute():
+        return df.aggregate([], [f.sum(col("a"))]).collect()
+    
+    time_execution(execute, f"Simple aggregation: {n_batches} batches")
 
 
 def run_complex_computations(
@@ -59,24 +135,8 @@ def run_complex_computations(
     n_partitions: int | None = None,
 ) -> None:
     """CPU-intensive computations with multiple columns."""
-    ctx = SessionContext()
-    batches = []
-    for i in range(n_batches):
-        start = i * batch_size
-        # Create multiple columns with different data types
-        arr_a = pa.array(range(start, start + batch_size))
-        arr_b = pa.array([x * 2.5 + 1.0 for x in range(start, start + batch_size)])
-        arr_c = pa.array([x % 1000 for x in range(start, start + batch_size)])
-        batches.append(pa.record_batch([arr_a, arr_b, arr_c], names=["a", "b", "c"]))
-
-    if n_partitions is None:
-        n_partitions = n_batches
-    n_partitions = max(1, min(n_partitions, n_batches))
-    partition_size = math.ceil(len(batches) / n_partitions)
-    partitions = [
-        batches[i : i + partition_size] for i in range(0, len(batches), partition_size)
-    ]
-    df = ctx.create_dataframe(partitions)
+    batches = create_multi_column_batches(n_batches, batch_size)
+    df = create_dataframe_from_batches(batches, n_partitions)
 
     # CPU-intensive transformations
     df = df.select(
@@ -110,10 +170,10 @@ def run_complex_computations(
         ]
     )
 
-    start = time.perf_counter()
-    result = df.collect()
-    duration = time.perf_counter() - start
-    print(f"Complex computations: {n_batches} batches in {duration:.3f}s, {len(result)} result rows")
+    def execute():
+        return df.collect()
+    
+    time_execution(execute, f"Complex computations: {n_batches} batches")
 
 
 def run_string_processing(
@@ -122,29 +182,8 @@ def run_string_processing(
     n_partitions: int | None = None,
 ) -> None:
     """CPU-intensive string processing operations."""
-    ctx = SessionContext()
-    batches = []
-    for i in range(n_batches):
-        start = i * batch_size
-        # Create string data
-        arr_id = pa.array([f"user_{x:08d}" for x in range(start, start + batch_size)])
-        arr_email = pa.array([f"user{x}@example{x%10}.com" for x in range(start, start + batch_size)])
-        arr_category = pa.array([f"category_{x%100:03d}" for x in range(start, start + batch_size)])
-        arr_value = pa.array([x * 1.5 for x in range(start, start + batch_size)])
-        
-        batches.append(pa.record_batch(
-            [arr_id, arr_email, arr_category, arr_value], 
-            names=["id", "email", "category", "value"]
-        ))
-
-    if n_partitions is None:
-        n_partitions = n_batches
-    n_partitions = max(1, min(n_partitions, n_batches))
-    partition_size = math.ceil(len(batches) / n_partitions)
-    partitions = [
-        batches[i : i + partition_size] for i in range(0, len(batches), partition_size)
-    ]
-    df = ctx.create_dataframe(partitions)
+    batches = create_string_batches(n_batches, batch_size)
+    df = create_dataframe_from_batches(batches, n_partitions)
 
     # String processing operations
     df = df.select(
@@ -175,10 +214,10 @@ def run_string_processing(
         ]
     )
 
-    start = time.perf_counter()
-    result = df.collect()
-    duration = time.perf_counter() - start
-    print(f"String processing: {n_batches} batches in {duration:.3f}s, {len(result)} result rows")
+    def execute():
+        return df.collect()
+    
+    time_execution(execute, f"String processing: {n_batches} batches")
 
 
 def run_window_functions(
@@ -187,27 +226,8 @@ def run_window_functions(
     n_partitions: int | None = None,
 ) -> None:
     """CPU-intensive window function operations."""
-    ctx = SessionContext()
-    batches = []
-    for i in range(n_batches):
-        start = i * batch_size
-        arr_a = pa.array(range(start, start + batch_size))
-        arr_group = pa.array([x % 1000 for x in range(start, start + batch_size)])
-        arr_value = pa.array([x * 2.5 + (x % 100) for x in range(start, start + batch_size)])
-        
-        batches.append(pa.record_batch(
-            [arr_a, arr_group, arr_value], 
-            names=["a", "group_id", "value"]
-        ))
-
-    if n_partitions is None:
-        n_partitions = n_batches
-    n_partitions = max(1, min(n_partitions, n_batches))
-    partition_size = math.ceil(len(batches) / n_partitions)
-    partitions = [
-        batches[i : i + partition_size] for i in range(0, len(batches), partition_size)
-    ]
-    df = ctx.create_dataframe(partitions)
+    batches = create_groupby_batches(n_batches, batch_size)
+    df = create_dataframe_from_batches(batches, n_partitions)
 
     # Note: Window functions in DataFusion Python may have limited support
     # Using group-by operations that require sorting and complex aggregations
@@ -231,10 +251,10 @@ def run_window_functions(
         ]
     )
 
-    start = time.perf_counter()
-    result = df.collect()
-    duration = time.perf_counter() - start
-    print(f"Window/groupby operations: {n_batches} batches in {duration:.3f}s, {len(result)} result rows")
+    def execute():
+        return df.collect()
+    
+    time_execution(execute, f"Window/groupby operations: {n_batches} batches")
 
 
 def run(
