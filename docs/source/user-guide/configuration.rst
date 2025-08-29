@@ -47,26 +47,5 @@ a :py:class:`~datafusion.context.SessionConfig` and :py:class:`~datafusion.conte
     print(ctx)
 
 
-.. _target_partitions:
-
-Target partitions and threads
------------------------------
-
-The :py:meth:`~datafusion.context.SessionConfig.with_target_partitions` method
-controls how many partitions DataFusion uses when executing a query. Each
-partition is processed on its own thread, so this setting effectively limits
-the number of threads that will be scheduled.
-
-For most workloads a good starting value is the number of logical CPU cores on
-your machine. You can use :func:`os.cpu_count` to automatically configure this::
-
-    import os
-    config = SessionConfig().with_target_partitions(os.cpu_count())
-
-Choosing a value significantly higher than the available cores can lead to
-excessive context switching without performance gains, while a much lower value
-may underutilize the machine.
-
-
 You can read more about available :py:class:`~datafusion.context.SessionConfig` options in the `rust DataFusion Configuration guide <https://arrow.apache.org/datafusion/user-guide/configs.html>`_,
 and about :code:`RuntimeEnvBuilder` options in the rust `online API documentation <https://docs.rs/datafusion/latest/datafusion/execution/runtime_env/struct.RuntimeEnvBuilder.html>`_.

@@ -19,13 +19,13 @@ use std::collections::HashMap;
 use std::ffi::CString;
 use std::sync::Arc;
 
-use arrow::array::{new_null_array, Array, RecordBatch, RecordBatchReader, StructArray};
+use arrow::array::{new_null_array, RecordBatch, RecordBatchIterator, RecordBatchReader};
 use arrow::compute::can_cast_types;
 use arrow::error::ArrowError;
-use arrow::ffi::{self, FFI_ArrowArray, FFI_ArrowSchema};
+use arrow::ffi::FFI_ArrowSchema;
 use arrow::ffi_stream::FFI_ArrowArrayStream;
 use arrow::pyarrow::FromPyArrow;
-use datafusion::arrow::datatypes::{Schema, SchemaRef};
+use datafusion::arrow::datatypes::Schema;
 use datafusion::arrow::pyarrow::{PyArrowType, ToPyArrow};
 use datafusion::arrow::util::pretty;
 use datafusion::common::UnnestOptions;
@@ -39,21 +39,19 @@ use datafusion::prelude::*;
 use datafusion_ffi::table_provider::FFI_TableProvider;
 use futures::{StreamExt, TryStreamExt};
 use pyo3::exceptions::PyValueError;
-use pyo3::ffi::Py_uintptr_t;
 use pyo3::prelude::*;
 use pyo3::pybacked::PyBackedStr;
 use pyo3::types::{PyCapsule, PyList, PyTuple, PyTupleMethods};
-use rayon::prelude::*;
+use tokio::task::JoinHandle;
 
 use crate::catalog::PyTable;
-use crate::errors::{py_datafusion_err, PyDataFusionError};
+use crate::errors::{py_datafusion_err, to_datafusion_err, PyDataFusionError};
 use crate::expr::sort_expr::to_sort_expressions;
 use crate::physical_plan::PyExecutionPlan;
 use crate::record_batch::PyRecordBatchStream;
 use crate::sql::logical::PyLogicalPlan;
 use crate::utils::{
-    get_tokio_runtime, init_global_rayon_pool, is_ipython_env, py_obj_to_scalar_value,
-    spawn_and_wait, validate_pycapsule, wait_for_future, wait_for_stream_next,
+    get_tokio_runtime, is_ipython_env, py_obj_to_scalar_value, validate_pycapsule, wait_for_future,
 };
 use crate::{
     errors::PyDataFusionResult,
@@ -356,63 +354,6 @@ impl PyDataFrame {
     }
 }
 
-/// Convert a vector of `RecordBatch` into PyArrow `RecordBatch` objects.
-///
-/// This performs the FFI conversion in parallel while releasing the GIL.
-fn record_batches_to_pyarrow(
-    py: Python<'_>,
-    record_batch_class: &Bound<'_, PyAny>,
-    batches: Vec<RecordBatch>,
-) -> PyResult<Vec<PyObject>> {
-    init_global_rayon_pool(std::thread::available_parallelism().map_or(1, |n| n.get()));
-    let ffi_batches: Vec<(FFI_ArrowArray, FFI_ArrowSchema)> = py
-        .allow_threads(|| {
-            batches
-                .into_par_iter()
-                .map(|rb| {
-                    let sa: StructArray = rb.into();
-                    ffi::to_ffi(&sa.to_data())
-                })
-                .collect::<Result<Vec<_>, ArrowError>>()
-        })
-        .map_err(PyDataFusionError::from)?;
-
-    ffi_batches
-        .into_iter()
-        .map(|(array, schema)| {
-            // Allocate the FFI structures on the heap so that PyArrow can take
-            // ownership of them. We intentionally leak these allocations on
-            // success as PyArrow will release them when the resulting
-            // `RecordBatch` is dropped on the Python side.
-            let array = Box::new(array);
-            let schema = Box::new(schema);
-            let array_ptr = Box::into_raw(array);
-            let schema_ptr = Box::into_raw(schema);
-
-            let result = record_batch_class.call_method1(
-                "_import_from_c",
-                (array_ptr as Py_uintptr_t, schema_ptr as Py_uintptr_t),
-            );
-
-            if result.is_err() {
-                // If the import fails, reconstruct the boxes so they are
-                // properly dropped to avoid leaking memory.
-                unsafe {
-                    let _ = Box::from_raw(array_ptr);
-                    let _ = Box::from_raw(schema_ptr);
-                }
-            }
-
-            result.map(Into::into)
-        })
-        .collect()
-}
-
-/// Fetch the `pyarrow.RecordBatch` class
-fn pyarrow_record_batch_class(py: Python<'_>) -> PyResult<Bound<'_, PyAny>> {
-    py.import("pyarrow")?.getattr("RecordBatch")
-}
-
 #[pymethods]
 impl PyDataFrame {
     /// Enable selection for `df[col]`, `df[col1, col2, col3]`, and `df[[col1, col2, col3]]`
@@ -583,11 +524,9 @@ impl PyDataFrame {
     fn collect(&self, py: Python) -> PyResult<Vec<PyObject>> {
         let batches = wait_for_future(py, self.df.as_ref().clone().collect())?
             .map_err(PyDataFusionError::from)?;
-
-        // Fetch pyarrow.RecordBatch class once per call and reuse it
-        let record_batch_class = pyarrow_record_batch_class(py)?;
-
-        record_batches_to_pyarrow(py, &record_batch_class, batches)
+        // cannot use PyResult<Vec<RecordBatch>> return type due to
+        // https://github.com/PyO3/pyo3/issues/1813
+        batches.into_iter().map(|rb| rb.to_pyarrow(py)).collect()
     }
 
     /// Cache DataFrame.
@@ -602,12 +541,9 @@ impl PyDataFrame {
         let batches = wait_for_future(py, self.df.as_ref().clone().collect_partitioned())?
             .map_err(PyDataFusionError::from)?;
 
-        // Fetch pyarrow.RecordBatch class once and reuse it for all partitions
-        let record_batch_class = pyarrow_record_batch_class(py)?;
-
         batches
             .into_iter()
-            .map(|rbs| record_batches_to_pyarrow(py, &record_batch_class, rbs))
+            .map(|rbs| rbs.into_iter().map(|rb| rb.to_pyarrow(py)).collect())
             .collect()
     }
 
@@ -943,14 +879,8 @@ impl PyDataFrame {
         py: Python<'py>,
         requested_schema: Option<Bound<'py, PyCapsule>>,
     ) -> PyDataFusionResult<Bound<'py, PyCapsule>> {
-        // execute query lazily using a stream
-        let df = self.df.as_ref().clone();
-        let stream = spawn_and_wait(py, async move { df.execute_stream().await })?;
-
-        // Determine the schema and handle optional projection
-        let stream_schema = stream.schema();
-        let mut schema: Schema = stream_schema.as_ref().to_owned();
-        let mut project = false;
+        let mut batches = wait_for_future(py, self.df.as_ref().clone().collect())??;
+        let mut schema: Schema = self.df.schema().to_owned().into();
 
         if let Some(schema_capsule) = requested_schema {
             validate_pycapsule(&schema_capsule, "arrow_schema")?;
@@ -959,12 +889,17 @@ impl PyDataFrame {
             let desired_schema = Schema::try_from(schema_ptr)?;
 
             schema = project_schema(schema, desired_schema)?;
-            project = schema != *stream_schema.as_ref();
+
+            batches = batches
+                .into_iter()
+                .map(|record_batch| record_batch_into_schema(record_batch, &schema))
+                .collect::<Result<Vec<RecordBatch>, ArrowError>>()?;
         }
 
-        let schema_ref: SchemaRef = Arc::new(schema);
-        let reader: Box<dyn RecordBatchReader + Send> =
-            Box::new(ArrowStreamReader::new(stream, schema_ref, project));
+        let batches_wrapped = batches.into_iter().map(Ok);
+
+        let reader = RecordBatchIterator::new(batches_wrapped, Arc::new(schema));
+        let reader: Box<dyn RecordBatchReader + Send> = Box::new(reader);
 
         let ffi_stream = FFI_ArrowArrayStream::new(reader);
         let stream_capsule_name = CString::new("arrow_array_stream").unwrap();
@@ -972,14 +907,24 @@ impl PyDataFrame {
     }
 
     fn execute_stream(&self, py: Python) -> PyDataFusionResult<PyRecordBatchStream> {
+        // create a Tokio runtime to run the async code
+        let rt = &get_tokio_runtime().0;
         let df = self.df.as_ref().clone();
-        let stream = spawn_and_wait(py, async move { df.execute_stream().await })?;
+        let fut: JoinHandle<datafusion::common::Result<SendableRecordBatchStream>> =
+            rt.spawn(async move { df.execute_stream().await });
+        let stream = wait_for_future(py, async { fut.await.map_err(to_datafusion_err) })???;
         Ok(PyRecordBatchStream::new(stream))
     }
 
     fn execute_stream_partitioned(&self, py: Python) -> PyResult<Vec<PyRecordBatchStream>> {
+        // create a Tokio runtime to run the async code
+        let rt = &get_tokio_runtime().0;
         let df = self.df.as_ref().clone();
-        let stream = spawn_and_wait(py, async move { df.execute_stream_partitioned().await })?;
+        let fut: JoinHandle<datafusion::common::Result<Vec<SendableRecordBatchStream>>> =
+            rt.spawn(async move { df.execute_stream_partitioned().await });
+        let stream = wait_for_future(py, async { fut.await.map_err(to_datafusion_err) })?
+            .map_err(py_datafusion_err)?
+            .map_err(py_datafusion_err)?;
 
         Ok(stream.into_iter().map(PyRecordBatchStream::new).collect())
     }
@@ -1049,73 +994,12 @@ impl PyDataFrame {
     }
 }
 
-struct ArrowStreamReader {
-    stream: SendableRecordBatchStream,
-    schema: SchemaRef,
-    project: bool,
-}
-
-impl ArrowStreamReader {
-    fn new(stream: SendableRecordBatchStream, schema: SchemaRef, project: bool) -> Self {
-        Self {
-            stream,
-            schema,
-            project,
-        }
-    }
-}
-
-impl RecordBatchReader for ArrowStreamReader {
-    fn schema(&self) -> SchemaRef {
-        self.schema.clone()
-    }
-}
-
-impl Iterator for ArrowStreamReader {
-    type Item = Result<RecordBatch, ArrowError>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let result = Python::with_gil(|py| wait_for_stream_next(py, &mut self.stream));
-
-        match result {
-            Ok(Some(batch)) => {
-                let batch = if self.project {
-                    match record_batch_into_schema(batch, self.schema.as_ref()) {
-                        Ok(b) => b,
-                        Err(e) => return Some(Err(e)),
-                    }
-                } else {
-                    batch
-                };
-                Some(Ok(batch))
-            }
-            Ok(None) => None,
-            Err(e) => Some(Err(ArrowError::from(e))),
-        }
-    }
-}
-
 /// Print DataFrame
 fn print_dataframe(py: Python, df: DataFrame) -> PyDataFusionResult<()> {
-    // Get the schema before consuming the DataFrame
-    let schema: SchemaRef = Arc::new(df.schema().clone().into());
-
     // Get string representation of record batches
-    let collected_batches = wait_for_future(py, df.collect())??;
-
-    let batches =
-        if collected_batches.is_empty() || collected_batches.iter().all(|b| b.num_rows() == 0) {
-            if schema.fields().is_empty() {
-                vec![]
-            } else {
-                vec![RecordBatch::new_empty(schema.clone())]
-            }
-        } else {
-            collected_batches
-        };
-
+    let batches = wait_for_future(py, df.collect())??;
     let result = if batches.is_empty() {
-        "Empty DataFrame".to_string()
+        "DataFrame has no rows".to_string()
     } else {
         match pretty::pretty_format_batches(&batches) {
             Ok(batch) => format!("DataFrame()\n{batch}"),

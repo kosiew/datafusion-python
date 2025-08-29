@@ -161,13 +161,7 @@ class SessionConfig:
     def with_target_partitions(self, target_partitions: int) -> SessionConfig:
         """Customize the number of target partitions for query execution.
 
-        Each partition is processed on its own thread, so this value controls
-        the degree of parallelism. A good starting point is the number of
-        logical CPU cores on your machine, for example
-        ``SessionConfig().with_target_partitions(os.cpu_count())``.
-
-        See the :ref:`configuration guide <target_partitions>` for more
-        discussion on choosing a value.
+        Increasing partitions can increase concurrency.
 
         Args:
             target_partitions: Number of target partitions.
