@@ -20,6 +20,7 @@ import os
 import re
 import threading
 import time
+import tracemalloc
 from typing import Any
 
 import pyarrow as pa
@@ -250,13 +251,6 @@ def test_filter(df):
     assert result.column(0) == pa.array([2])
     assert result.column(1) == pa.array([5])
     assert result.column(2) == pa.array([5])
-
-
-def test_show_empty(df, capsys):
-    df_empty = df.filter(column("a") > literal(3))
-    df_empty.show()
-    captured = capsys.readouterr()
-    assert "DataFrame has no rows" in captured.out
 
 
 def test_sort(df):
@@ -1390,6 +1384,27 @@ def test_collect_partitioned():
     assert [[batch]] == ctx.create_dataframe([[batch]]).collect_partitioned()
 
 
+def test_collect_multiple_batches_to_pyarrow():
+    ctx = SessionContext()
+
+    batch1 = pa.RecordBatch.from_arrays(
+        [pa.array([1, 2])],
+        names=["a"],
+    )
+    batch2 = pa.RecordBatch.from_arrays(
+        [pa.array([3, 4])],
+        names=["a"],
+    )
+
+    df = ctx.create_dataframe([[batch1], [batch2]])
+
+    batches = df.collect()
+
+    assert len(batches) == 2
+    table = pa.Table.from_batches(batches)
+    assert table.column("a").to_pylist() == [1, 2, 3, 4]
+
+
 def test_union(ctx):
     batch = pa.RecordBatch.from_arrays(
         [pa.array([1, 2, 3]), pa.array([4, 5, 6])],
@@ -1468,6 +1483,25 @@ def test_empty_to_pandas(df):
     assert isinstance(pandas_df, pd.DataFrame)
     assert pandas_df.shape == (0, 3)
     assert set(pandas_df.columns) == {"a", "b", "c"}
+
+
+def test_show_no_batches(capsys):
+    """Ensure showing a query with no batches still prints headers."""
+    ctx = SessionContext()
+    df = ctx.sql("SELECT 1 AS a WHERE 1=0")
+    df.show()
+    captured = capsys.readouterr()
+    assert "| a |" in captured.out
+    assert "Empty DataFrame" not in captured.out
+
+
+def test_show_empty_dataframe(df, capsys):
+    """Ensure showing an empty DataFrame still prints headers."""
+    empty_df = df.limit(0)
+    empty_df.show()
+    captured = capsys.readouterr()
+    assert "| a | b | c |" in captured.out
+    assert "Empty DataFrame" not in captured.out
 
 
 def test_to_polars(df):
@@ -1572,6 +1606,23 @@ async def test_execute_stream_partitioned_async(df):
         # Ensure the stream is exhausted after iteration
         remaining_batches = [batch async for batch in stream]
         assert not remaining_batches
+
+
+def test_arrow_c_stream_streaming(large_df):
+    df = large_df.repartition(4)
+    capsule = df.__arrow_c_stream__()
+    ctypes.pythonapi.PyCapsule_GetPointer.restype = ctypes.c_void_p
+    ctypes.pythonapi.PyCapsule_GetPointer.argtypes = [ctypes.py_object, ctypes.c_char_p]
+    ptr = ctypes.pythonapi.PyCapsule_GetPointer(capsule, b"arrow_array_stream")
+    reader = pa.RecordBatchReader._import_from_c(ptr)
+
+    tracemalloc.start()
+    batch_count = sum(1 for _ in reader)
+    _current, peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+
+    assert batch_count > 1
+    assert peak < 50 * MB
 
 
 def test_empty_to_arrow_table(df):
@@ -2664,19 +2715,3 @@ def test_collect_interrupted():
 
     # Make sure the interrupt thread has finished
     interrupt_thread.join(timeout=1.0)
-
-
-def test_show_select_where_no_rows(capsys) -> None:
-    ctx = SessionContext()
-    df = ctx.sql("SELECT 1 WHERE 1=0")
-    df.show()
-    out = capsys.readouterr().out
-    assert "DataFrame has no rows" in out
-
-
-def test_show_from_empty_batch(capsys) -> None:
-    ctx = SessionContext()
-    batch = pa.record_batch([pa.array([], type=pa.int32())], names=["a"])
-    ctx.create_dataframe([[batch]]).show()
-    out = capsys.readouterr().out
-    assert "| a |" in out

@@ -25,8 +25,10 @@ The ``DataFrame`` class is the core abstraction in DataFusion that represents ta
 on that data. DataFrames provide a flexible API for transforming data through various operations such as
 filtering, projection, aggregation, joining, and more.
 
-A DataFrame represents a logical plan that is lazily evaluated. The actual execution occurs only when 
-terminal operations like ``collect()``, ``show()``, or ``to_pandas()`` are called.
+A DataFrame represents a logical plan that is lazily evaluated. The actual execution occurs only when
+terminal operations like ``collect()``, ``show()``, or ``to_pandas()`` are called. ``collect()`` loads
+all record batches into Python memory; for large results you may want to stream data instead using
+``execute_stream()`` or ``__arrow_c_stream__()``.
 
 Creating DataFrames
 -------------------
@@ -128,26 +130,46 @@ DataFusion's DataFrame API offers a wide range of operations:
 
 Terminal Operations
 -------------------
-
-To materialize the results of your DataFrame operations:
+``collect()`` materializes every record batch in Python. While convenient, this
+eagerly loads the full result set into memory and can overwhelm the Python
+process for large queries. Alternatives that stream data from Rust avoid this
+memory growth:
 
 .. code-block:: python
 
-    # Collect all data as PyArrow RecordBatches
+    # Collect all data as PyArrow RecordBatches (loads entire result set)
     result_batches = df.collect()
-    
-    # Convert to various formats
+
+    # Stream batches using the native API
+    stream = df.execute_stream()
+    for batch in stream:
+        ...  # process each RecordBatch
+
+    # Stream via the Arrow C Data Interface
+    import pyarrow as pa
+    reader = pa.ipc.RecordBatchStreamReader._import_from_c(df.__arrow_c_stream__())
+    for batch in reader:
+        ...
+
+    # Convert to various formats (also load all data into memory)
     pandas_df = df.to_pandas()        # Pandas DataFrame
     polars_df = df.to_polars()        # Polars DataFrame
     arrow_table = df.to_arrow_table() # PyArrow Table
     py_dict = df.to_pydict()          # Python dictionary
     py_list = df.to_pylist()          # Python list of dictionaries
-    
+
     # Display results
     df.show()                         # Print tabular format to console
-    
+
     # Count rows
     count = df.count()
+
+For large outputs, prefer engine-level writers such as ``df.write_parquet()``
+or other DataFusion writers. These stream data directly to the destination and
+avoid buffering the entire dataset in Python.
+
+For more on parallel record batch conversion and the Python GIL, see
+:doc:`collect-gil`.
 
 HTML Rendering
 --------------
@@ -207,3 +229,4 @@ For a complete list of available functions, see the :py:mod:`datafusion.function
    :maxdepth: 1
 
    rendering
+   collect-gil

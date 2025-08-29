@@ -57,17 +57,34 @@ and returns a ``StructArray``. Common pyarrow sources you can use are:
 Exporting from DataFusion
 -------------------------
 
-DataFusion DataFrames implement ``__arrow_c_stream__`` PyCapsule interface, so any
-Python library that accepts these can import a DataFusion DataFrame directly.
+DataFusion DataFrames implement ``__arrow_c_stream__`` so any Python library
+that accepts this interface can import a DataFusion ``DataFrame`` directly.
 
-.. warning::
-    It is important to note that this will cause the DataFrame execution to happen, which may be
-    a time consuming task. That is, you will cause a
-    :py:func:`datafusion.dataframe.DataFrame.collect` operation call to occur.
+``collect()`` or ``pa.table(df)`` will materialize every record batch in
+Python. For large results this can quickly exhaust memory. Instead, stream the
+output incrementally:
 
+.. ipython:: python
+
+    # Stream batches with DataFusion's native API
+    stream = df.execute_stream()
+    for batch in stream:
+        ...  # process each RecordBatch as it arrives
+
+.. ipython:: python
+
+    # Expose a C stream that PyArrow can consume lazily
+    import pyarrow as pa
+    reader = pa.ipc.RecordBatchStreamReader._import_from_c(df.__arrow_c_stream__())
+    for batch in reader:
+        ...  # process each batch without buffering the entire table
+
+If the goal is simply to persist results, prefer engine-level writers such as
+``df.write_parquet()``. These writers stream data from Rust directly to the
+destination and avoid Python-side memory growth.
 
 .. ipython:: python
 
     df = df.select((col("a") * lit(1.5)).alias("c"), lit("df").alias("d"))
-    pa.table(df)
+    pa.table(df)  # loads all batches into memory
 

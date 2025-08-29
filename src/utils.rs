@@ -17,15 +17,18 @@
 
 use crate::{
     common::data_type::PyScalarValue,
-    errors::{PyDataFusionError, PyDataFusionResult},
+    errors::{to_datafusion_err, PyDataFusionError, PyDataFusionResult},
     TokioRuntime,
 };
+use datafusion::{arrow::record_batch::RecordBatch, physical_plan::SendableRecordBatchStream};
 use datafusion::{
     common::ScalarValue, execution::context::SessionContext, logical_expr::Volatility,
 };
+use futures::StreamExt;
 use pyo3::prelude::*;
 use pyo3::{exceptions::PyValueError, types::PyCapsule};
 use std::{future::Future, sync::OnceLock, time::Duration};
+use rayon::ThreadPoolBuilder;
 use tokio::{runtime::Runtime, time::sleep};
 /// Utility to get the Tokio Runtime from Python
 #[inline]
@@ -57,6 +60,16 @@ pub(crate) fn get_global_ctx() -> &'static SessionContext {
     CTX.get_or_init(SessionContext::new)
 }
 
+#[inline]
+pub(crate) fn init_global_rayon_pool(num_threads: usize) {
+    static RAYON_POOL: OnceLock<()> = OnceLock::new();
+    RAYON_POOL.get_or_init(|| {
+        let _ = ThreadPoolBuilder::new()
+            .num_threads(num_threads)
+            .build_global();
+    });
+}
+
 /// Utility to collect rust futures with GIL released and respond to
 /// Python interrupts such as ``KeyboardInterrupt``. If a signal is
 /// received while the future is running, the future is aborted and the
@@ -82,6 +95,43 @@ where
             }
         })
     })
+}
+
+/// Poll `SendableRecordBatchStream::next` while checking Python signals.
+///
+/// This utility mirrors [`wait_for_future`] for streams and converts any
+/// Python interruptions into a [`DataFusionError`].
+pub fn wait_for_stream_next(
+    py: Python,
+    stream: &mut SendableRecordBatchStream,
+) -> datafusion::common::Result<Option<RecordBatch>> {
+    match wait_for_future(py, stream.next()) {
+        Ok(Some(Ok(batch))) => Ok(Some(batch)),
+        Ok(Some(Err(e))) => Err(e),
+        Ok(None) => Ok(None),
+        Err(err) => Err(to_datafusion_err(err)),
+    }
+}
+
+pub fn spawn_and_wait<F, T>(py: Python, fut: F) -> PyDataFusionResult<T>
+where
+    F: Future<Output = datafusion::common::Result<T>> + Send + 'static,
+    T: Send + 'static,
+{
+    let rt = &get_tokio_runtime().0;
+    let handle = rt.spawn(fut);
+    let abort_handle = handle.abort_handle();
+
+    match wait_for_future(py, async { handle.await.map_err(to_datafusion_err) }) {
+        Ok(result) => {
+            let result = result.map_err(PyDataFusionError::from)?;
+            result.map_err(PyDataFusionError::from)
+        }
+        Err(err) => {
+            abort_handle.abort();
+            Err(err.into())
+        }
+    }
 }
 
 pub(crate) fn parse_volatility(value: &str) -> PyDataFusionResult<Volatility> {
