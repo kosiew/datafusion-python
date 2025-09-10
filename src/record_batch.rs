@@ -84,21 +84,15 @@ impl PyRecordBatchStream {
     }
 }
 
-/// Polls the next batch from a `SendableRecordBatchStream`, converting the `Option<Result<_>>` form.
-pub(crate) async fn poll_next_batch(
-    stream: &mut SendableRecordBatchStream,
-) -> datafusion::error::Result<Option<RecordBatch>> {
-    stream.next().await.transpose()
-}
-
 async fn next_stream(
     stream: Arc<Mutex<SendableRecordBatchStream>>,
     sync: bool,
 ) -> PyResult<PyRecordBatch> {
     let mut stream = stream.lock().await;
-    match poll_next_batch(&mut stream).await {
-        Ok(Some(batch)) => Ok(batch.into()),
-        Ok(None) => {
+    match stream.next().await {
+        Some(Ok(batch)) => Ok(batch.into()),
+        Some(Err(e)) => Err(PyDataFusionError::from(e))?,
+        None => {
             // Depending on whether the iteration is sync or not, we raise either a
             // StopIteration or a StopAsyncIteration
             if sync {
@@ -107,6 +101,5 @@ async fn next_stream(
                 Err(PyStopAsyncIteration::new_err("stream exhausted"))
             }
         }
-        Err(e) => Err(PyDataFusionError::from(e))?,
     }
 }

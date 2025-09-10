@@ -46,26 +46,6 @@ class RecordBatch:
         """Convert to :py:class:`pa.RecordBatch`."""
         return self.record_batch.to_pyarrow()
 
-    def __arrow_c_array__(
-        self, requested_schema: object | None = None
-    ) -> tuple[object, object]:
-        """Export the record batch via the Arrow C Data Interface.
-
-        This allows zero-copy interchange with libraries that support the
-        `Arrow PyCapsule interface <https://arrow.apache.org/docs/format/
-        CDataInterface/PyCapsuleInterface.html>`_.
-
-        Args:
-            requested_schema: Attempt to provide the record batch using this
-                schema. Only straightforward projections such as column
-                selection or reordering are applied.
-
-        Returns:
-            Two Arrow PyCapsule objects representing the ``ArrowArray`` and
-            ``ArrowSchema``.
-        """
-        return self.record_batch.__arrow_c_array__(requested_schema)
-
 
 class RecordBatchStream:
     """This class represents a stream of record batches.
@@ -83,19 +63,19 @@ class RecordBatchStream:
         return next(self)
 
     async def __anext__(self) -> RecordBatch:
-        """Return the next :py:class:`RecordBatch` in the stream asynchronously."""
+        """Async iterator function."""
         next_batch = await self.rbs.__anext__()
         return RecordBatch(next_batch)
 
     def __next__(self) -> RecordBatch:
-        """Return the next :py:class:`RecordBatch` in the stream."""
+        """Iterator function."""
         next_batch = next(self.rbs)
         return RecordBatch(next_batch)
 
     def __aiter__(self) -> typing_extensions.Self:
-        """Return an asynchronous iterator over record batches."""
+        """Async iterator function."""
         return self
 
     def __iter__(self) -> typing_extensions.Self:
-        """Return an iterator over record batches."""
+        """Iterator function."""
         return self
