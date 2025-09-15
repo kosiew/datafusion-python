@@ -617,7 +617,7 @@ impl PySessionContext {
 
             let provider = unsafe { capsule.reference::<FFI_TableProvider>() };
             let provider: ForeignTableProvider = provider.into();
-            Arc::new(provider) as Arc<dyn TableProvider>
+            Arc::new(provider) as Arc<dyn TableProvider + Send>
         } else if let Ok(py_table) = table_provider.extract::<PyTable>() {
             py_table.table()
         } else if let Ok(py_provider) = table_provider.extract::<PyTableProvider>() {
@@ -858,7 +858,7 @@ impl PySessionContext {
         dataset: &Bound<'_, PyAny>,
         py: Python,
     ) -> PyDataFusionResult<()> {
-        let table: Arc<dyn TableProvider> = Arc::new(Dataset::new(dataset, py)?);
+        let table: Arc<dyn TableProvider + Send> = Arc::new(Dataset::new(dataset, py)?);
 
         self.ctx.register_table(name, table)?;
 

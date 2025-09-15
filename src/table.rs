@@ -23,19 +23,27 @@ use datafusion_ffi::table_provider::{FFI_TableProvider, ForeignTableProvider};
 use pyo3::prelude::*;
 use pyo3::types::PyCapsule;
 
+use crate::catalog::PyTable;
 use crate::dataframe::PyDataFrame;
 use crate::errors::{py_datafusion_err, PyDataFusionResult};
 use crate::utils::{get_tokio_runtime, validate_pycapsule};
 
 /// Represents a table provider that can be registered with DataFusion
 #[pyclass(name = "TableProvider", module = "datafusion")]
+#[derive(Clone)]
 pub struct PyTableProvider {
     pub(crate) provider: Arc<dyn TableProvider + Send>,
 }
 
 impl PyTableProvider {
-    pub(crate) fn new(provider: Arc<dyn TableProvider>) -> Self {
+    pub(crate) fn new(provider: Arc<dyn TableProvider + Send>) -> Self {
         Self { provider }
+    }
+
+    /// Return a `PyTable` wrapper around this provider so callers can call
+    /// `as_table().table()` to get the underlying `Arc<dyn TableProvider + Send>`.
+    pub fn as_table(&self) -> PyTable {
+        PyTable::new(Arc::clone(&self.provider))
     }
 }
 

@@ -48,7 +48,7 @@ use crate::expr::sort_expr::to_sort_expressions;
 use crate::physical_plan::PyExecutionPlan;
 use crate::record_batch::PyRecordBatchStream;
 use crate::sql::logical::PyLogicalPlan;
-use crate::table::PyTableProvider;
+pub use crate::table::PyTableProvider;
 use crate::utils::{
     get_tokio_runtime, is_ipython_env, py_obj_to_scalar_value, validate_pycapsule, wait_for_future,
 };
@@ -268,7 +268,7 @@ impl PyDataFrame {
         }
     }
 
-    pub(crate) fn into_view_provider(&self) -> Arc<dyn TableProvider> {
+    pub(crate) fn into_view_provider(&self) -> Arc<dyn TableProvider + Send> {
         self.df.as_ref().clone().into_view()
     }
 
