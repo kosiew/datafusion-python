@@ -18,9 +18,9 @@
 use pyo3::prelude::*;
 use std::sync::Arc;
 
-use crate::dataframe::PyTableProvider;
 use crate::errors::{py_datafusion_err, to_datafusion_err};
 use crate::expr::PyExpr;
+use crate::table::PyTableProvider;
 use crate::utils::validate_pycapsule;
 use datafusion::catalog::{TableFunctionImpl, TableProvider};
 use datafusion::error::Result as DataFusionResult;
