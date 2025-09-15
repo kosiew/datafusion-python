@@ -114,6 +114,7 @@ impl PyTableProvider {
     }
 }
 
+#[deprecated(note = "Use PyTableProvider methods (as_arc, into_inner) directly instead")]
 pub(crate) fn pyany_to_table_provider(
     table_provider: &Bound<'_, PyAny>,
 ) -> PyResult<Arc<dyn TableProvider + Send>> {
@@ -130,7 +131,7 @@ pub(crate) fn pyany_to_table_provider(
     } else if let Ok(py_table) = table_provider.extract::<PyTable>() {
         Ok(py_table.table())
     } else if let Ok(py_provider) = table_provider.extract::<PyTableProvider>() {
-        Ok(py_provider.as_table().table())
+        Ok(py_provider.as_arc())
     } else if let Ok(inner) = table_provider.getattr("table") {
         pyany_to_table_provider(&inner)
     } else {

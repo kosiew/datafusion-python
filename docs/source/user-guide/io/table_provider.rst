@@ -48,28 +48,28 @@ A complete example can be found in the `examples folder <https://github.com/apac
     }
 
 Once you have this library available, you can construct a
-:py:class:`~datafusion.catalog.Table` in Python and register it with the
-``SessionContext``.  Tables can be created either from the PyCapsule exposed by
+:py:class:`~datafusion.TableProvider` in Python and register it with the
+``SessionContext``.  Table providers can be created either from the PyCapsule exposed by
 your Rust provider or from an existing :py:class:`~datafusion.dataframe.DataFrame`
-view created via ``df.into_view()`` (or the alias ``Table.from_dataframe(df)``).
+using ``TableProvider.from_view()``.
 
 .. code-block:: python
 
-    from datafusion.catalog import Table
+    from datafusion import SessionContext, TableProvider
 
     ctx = SessionContext()
     provider = MyTableProvider()
 
-    table_from_capsule = Table.from_capsule(provider)
+    capsule_provider = TableProvider.from_capsule(provider)
 
     df = ctx.from_pydict({"a": [1]})
-    provider_from_view = df.into_view()
+    view_provider = TableProvider.from_view(df)
 
-    ctx.register_table("capsule_table", table_from_capsule)
-    ctx.register_table("view_table", provider_from_view)
+    ctx.register_table("capsule_table", capsule_provider)
+    ctx.register_table("view_table", view_provider)
 
     ctx.table("capsule_table").show()
     ctx.table("view_table").show()
 
-``Table.from_dataframe(df)`` is available as an alias for ``df.into_view()``,
-but the latter is the preferred API.
+Both ``TableProvider.from_capsule()`` and ``TableProvider.from_view()`` create
+table providers that can be registered with the SessionContext using ``register_table()``.

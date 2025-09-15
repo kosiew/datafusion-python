@@ -405,7 +405,7 @@ impl PyDataFrame {
     /// where objects are shared
     /// https://github.com/apache/datafusion-python/pull/1016#discussion_r1983239116
     /// - we have not decided on the table_provider approach yet
-        #[allow(clippy::wrong_self_convention)]
+    #[allow(clippy::wrong_self_convention)]
     pub fn into_view(&self) -> PyDataFusionResult<PyTableProvider> {
         // Call the underlying Rust DataFrame::into_view method.
         // Note that the Rust method consumes self; here we clone the inner Arc<DataFrame>
