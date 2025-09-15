@@ -15,6 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use crate::dataframe::PyTableProvider;
 use crate::dataset::Dataset;
 use crate::errors::{py_datafusion_err, to_datafusion_err, PyDataFusionError, PyDataFusionResult};
 use crate::utils::{validate_pycapsule, wait_for_future};
@@ -209,11 +210,14 @@ impl PySchema {
         } else {
             match table_provider.extract::<PyTable>() {
                 Ok(py_table) => py_table.table,
-                Err(_) => {
-                    let py = table_provider.py();
-                    let provider = Dataset::new(&table_provider, py)?;
-                    Arc::new(provider) as Arc<dyn TableProvider>
-                }
+                Err(_) => match table_provider.extract::<PyTableProvider>() {
+                    Ok(py_provider) => py_provider.as_table().table(),
+                    Err(_) => {
+                        let py = table_provider.py();
+                        let provider = Dataset::new(&table_provider, py)?;
+                        Arc::new(provider) as Arc<dyn TableProvider>
+                    }
+                },
             }
         };
 
@@ -305,7 +309,7 @@ impl RustWrappedPySchemaProvider {
             }
 
             if py_table.hasattr("__datafusion_table_provider__")? {
-                let capsule = provider.getattr("__datafusion_table_provider__")?.call0()?;
+                let capsule = py_table.getattr("__datafusion_table_provider__")?.call0()?;
                 let capsule = capsule.downcast::<PyCapsule>().map_err(py_datafusion_err)?;
                 validate_pycapsule(capsule, "datafusion_table_provider")?;
 
@@ -318,6 +322,10 @@ impl RustWrappedPySchemaProvider {
                     if let Ok(inner_table) = inner_table.extract::<PyTable>() {
                         return Ok(Some(inner_table.table));
                     }
+                }
+
+                if let Ok(py_provider) = py_table.extract::<PyTableProvider>() {
+                    return Ok(Some(py_provider.as_table().table()));
                 }
 
                 match py_table.extract::<PyTable>() {
