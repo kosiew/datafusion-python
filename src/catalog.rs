@@ -17,7 +17,7 @@
 
 use crate::dataset::Dataset;
 use crate::errors::{py_datafusion_err, to_datafusion_err, PyDataFusionError, PyDataFusionResult};
-use crate::table::pyany_to_table_provider;
+use crate::table::PyTableProvider;
 use crate::utils::{validate_pycapsule, wait_for_future};
 use async_trait::async_trait;
 use datafusion::catalog::{MemoryCatalogProvider, MemorySchemaProvider};
@@ -28,6 +28,7 @@ use datafusion::{
     datasource::{TableProvider, TableType},
 };
 use datafusion_ffi::schema_provider::{FFI_SchemaProvider, ForeignSchemaProvider};
+use datafusion_ffi::table_provider::{FFI_TableProvider, ForeignTableProvider};
 use pyo3::exceptions::PyKeyError;
 use pyo3::prelude::*;
 use pyo3::types::PyCapsule;
@@ -196,7 +197,29 @@ impl PySchema {
     }
 
     fn register_table(&self, name: &str, table_provider: Bound<'_, PyAny>) -> PyResult<()> {
-        let provider = pyany_to_table_provider(&table_provider)?;
+        let provider = if table_provider.hasattr("__datafusion_table_provider__")? {
+            let capsule = table_provider
+                .getattr("__datafusion_table_provider__")?
+                .call0()?;
+            let capsule = capsule.downcast::<PyCapsule>().map_err(py_datafusion_err)?;
+            validate_pycapsule(capsule, "datafusion_table_provider")?;
+
+            let provider = unsafe { capsule.reference::<FFI_TableProvider>() };
+            let provider: ForeignTableProvider = provider.into();
+            Arc::new(provider) as Arc<dyn TableProvider + Send>
+        } else {
+            match table_provider.extract::<PyTable>() {
+                Ok(py_table) => py_table.table,
+                Err(_) => match table_provider.extract::<PyTableProvider>() {
+                    Ok(py_provider) => py_provider.into_inner(),
+                    Err(_) => {
+                        let py = table_provider.py();
+                        let provider = Dataset::new(&table_provider, py)?;
+                        Arc::new(provider) as Arc<dyn TableProvider + Send>
+                    }
+                },
+            }
+        };
 
         let _ = self
             .schema
@@ -285,7 +308,34 @@ impl RustWrappedPySchemaProvider {
                 return Ok(None);
             }
 
-            pyany_to_table_provider(&py_table).map(Some)
+            if py_table.hasattr("__datafusion_table_provider__")? {
+                let capsule = py_table.getattr("__datafusion_table_provider__")?.call0()?;
+                let capsule = capsule.downcast::<PyCapsule>().map_err(py_datafusion_err)?;
+                validate_pycapsule(capsule, "datafusion_table_provider")?;
+
+                let provider = unsafe { capsule.reference::<FFI_TableProvider>() };
+                let provider: ForeignTableProvider = provider.into();
+
+                Ok(Some(Arc::new(provider) as Arc<dyn TableProvider + Send>))
+            } else {
+                if let Ok(inner_table) = py_table.getattr("table") {
+                    if let Ok(inner_table) = inner_table.extract::<PyTable>() {
+                        return Ok(Some(inner_table.table));
+                    }
+                }
+
+                if let Ok(py_provider) = py_table.extract::<PyTableProvider>() {
+                    return Ok(Some(py_provider.into_inner()));
+                }
+
+                match py_table.extract::<PyTable>() {
+                    Ok(py_table) => Ok(Some(py_table.table)),
+                    Err(_) => {
+                        let ds = Dataset::new(&py_table, py).map_err(py_datafusion_err)?;
+                        Ok(Some(Arc::new(ds) as Arc<dyn TableProvider + Send>))
+                    }
+                }
+            }
         })
     }
 }

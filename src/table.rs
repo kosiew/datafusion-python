@@ -42,10 +42,23 @@ impl PyTableProvider {
         Self { provider }
     }
 
-    /// Return a `PyTable` wrapper around this provider so callers can call
-    /// `as_table().table()` to get the underlying `Arc<dyn TableProvider + Send>`.
+    /// Return a `PyTable` wrapper around this provider.
+    ///
+    /// Historically callers chained `as_table().table()` to access the
+    /// underlying `Arc<dyn TableProvider + Send>`. Prefer [`as_arc`] or
+    /// [`into_inner`] for direct access instead.
     pub fn as_table(&self) -> PyTable {
         PyTable::new(Arc::clone(&self.provider))
+    }
+
+    /// Return a clone of the inner [`TableProvider`].
+    pub fn as_arc(&self) -> Arc<dyn TableProvider + Send> {
+        Arc::clone(&self.provider)
+    }
+
+    /// Consume this wrapper and return the inner [`TableProvider`].
+    pub fn into_inner(self) -> Arc<dyn TableProvider + Send> {
+        self.provider
     }
 }
 

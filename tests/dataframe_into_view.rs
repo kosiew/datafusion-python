@@ -26,8 +26,7 @@ fn dataframe_into_view_returns_table_provider() {
 
     // Register the view in a new context and ensure it can be queried.
     let ctx = SessionContext::new();
-    ctx.register_table("view", provider.as_table().table())
-        .unwrap();
+    ctx.register_table("view", provider.into_inner()).unwrap();
 
     let rt = tokio::runtime::Runtime::new().unwrap();
     let batches = rt.block_on(async {
