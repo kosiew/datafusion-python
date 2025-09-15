@@ -309,7 +309,13 @@ class DataFrame:
         self.df = df
 
     def into_view(self) -> TableProviderInternal:
-        """Convert ``DataFrame`` into a ``TableProvider`` view for registration."""
+        """Convert ``DataFrame`` into a ``TableProvider`` view for registration.
+
+        This is the preferred way to obtain a view for
+        :py:meth:`~datafusion.context.SessionContext.register_table`.
+        ``TableProvider.from_dataframe`` calls this method under the hood,
+        and the older ``TableProvider.from_view`` helper is deprecated.
+        """
         return self.df.into_view()
 
     def __getitem__(self, key: str | list[str]) -> DataFrame:

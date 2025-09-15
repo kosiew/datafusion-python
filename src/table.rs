@@ -20,6 +20,7 @@ use std::sync::Arc;
 
 use datafusion::datasource::TableProvider;
 use datafusion_ffi::table_provider::{FFI_TableProvider, ForeignTableProvider};
+use pyo3::exceptions::PyDeprecationWarning;
 use pyo3::prelude::*;
 use pyo3::types::PyCapsule;
 
@@ -53,7 +54,7 @@ impl PyTableProvider {
     #[staticmethod]
     pub fn from_capsule(capsule: Bound<'_, PyAny>) -> PyResult<Self> {
         let capsule = capsule.downcast::<PyCapsule>().map_err(py_datafusion_err)?;
-        validate_pycapsule(&capsule, "datafusion_table_provider")?;
+        validate_pycapsule(capsule, "datafusion_table_provider")?;
 
         let provider = unsafe { capsule.reference::<FFI_TableProvider>() };
         let provider: ForeignTableProvider = provider.into();
@@ -61,11 +62,29 @@ impl PyTableProvider {
         Ok(Self::new(Arc::new(provider)))
     }
 
-    /// Create a `TableProvider` from a DataFrame by converting it into a view
+    /// Create a `TableProvider` from a `DataFrame`.
+    ///
+    /// This method simply delegates to `DataFrame.into_view`.
     #[staticmethod]
-    pub fn from_view(df: &PyDataFrame) -> PyDataFusionResult<Self> {
-        let table_provider = df.into_view_provider();
+    pub fn from_dataframe(df: &PyDataFrame) -> PyDataFusionResult<Self> {
+        let table_provider = df.to_view_provider();
         Ok(Self::new(table_provider))
+    }
+
+    /// Create a `TableProvider` from a `DataFrame` by converting it into a view.
+    ///
+    /// Deprecated: prefer `DataFrame.into_view` or
+    /// `TableProvider.from_dataframe` instead.
+    #[staticmethod]
+    pub fn from_view(py: Python<'_>, df: &PyDataFrame) -> PyDataFusionResult<Self> {
+        py.import("warnings")?.call_method1(
+            "warn",
+            (
+                "PyTableProvider.from_view() is deprecated; use DataFrame.into_view() or TableProvider.from_dataframe() instead.",
+                py.get_type::<PyDeprecationWarning>(),
+            ),
+        )?;
+        Self::from_dataframe(df)
     }
 
     fn __datafusion_table_provider__<'py>(

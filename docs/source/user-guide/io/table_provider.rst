@@ -51,7 +51,7 @@ Once you have this library available, you can construct a
 :py:class:`~datafusion.catalog.Table` in Python and register it with the
 ``SessionContext``.  Tables can be created either from the PyCapsule exposed by
 your Rust provider or from an existing :py:class:`~datafusion.dataframe.DataFrame`
-view.
+view created via ``df.into_view()`` (or the alias ``Table.from_dataframe(df)``).
 
 .. code-block:: python
 
@@ -63,10 +63,13 @@ view.
     table_from_capsule = Table.from_capsule(provider)
 
     df = ctx.from_pydict({"a": [1]})
-    table_from_view = Table.from_view(df)
+    provider_from_view = df.into_view()
 
     ctx.register_table("capsule_table", table_from_capsule)
-    ctx.register_table("view_table", table_from_view)
+    ctx.register_table("view_table", provider_from_view)
 
     ctx.table("capsule_table").show()
     ctx.table("view_table").show()
+
+``Table.from_dataframe(df)`` is available as an alias for ``df.into_view()``,
+but the latter is the preferred API.
