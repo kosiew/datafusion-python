@@ -26,7 +26,6 @@ use pyo3::types::PyCapsule;
 
 use crate::catalog::PyTable;
 use crate::dataframe::PyDataFrame;
-use crate::dataset::Dataset;
 use crate::errors::{py_datafusion_err, PyDataFusionResult};
 use crate::utils::{get_tokio_runtime, validate_pycapsule};
 
@@ -111,32 +110,5 @@ impl PyTableProvider {
         let provider = FFI_TableProvider::new(Arc::clone(&self.provider), false, Some(runtime));
 
         PyCapsule::new(py, provider, Some(name.clone()))
-    }
-}
-
-#[deprecated(note = "Use PyTableProvider methods (as_arc, into_inner) directly instead")]
-pub(crate) fn pyany_to_table_provider(
-    table_provider: &Bound<'_, PyAny>,
-) -> PyResult<Arc<dyn TableProvider + Send>> {
-    if table_provider.hasattr("__datafusion_table_provider__")? {
-        let capsule = table_provider
-            .getattr("__datafusion_table_provider__")?
-            .call0()?;
-        let capsule = capsule.downcast::<PyCapsule>().map_err(py_datafusion_err)?;
-        validate_pycapsule(capsule, "datafusion_table_provider")?;
-
-        let provider = unsafe { capsule.reference::<FFI_TableProvider>() };
-        let provider: ForeignTableProvider = provider.into();
-        Ok(Arc::new(provider) as Arc<dyn TableProvider + Send>)
-    } else if let Ok(py_table) = table_provider.extract::<PyTable>() {
-        Ok(py_table.table())
-    } else if let Ok(py_provider) = table_provider.extract::<PyTableProvider>() {
-        Ok(py_provider.as_arc())
-    } else if let Ok(inner) = table_provider.getattr("table") {
-        pyany_to_table_provider(&inner)
-    } else {
-        let py = table_provider.py();
-        let provider = Dataset::new(table_provider, py)?;
-        Ok(Arc::new(provider) as Arc<dyn TableProvider + Send>)
     }
 }
