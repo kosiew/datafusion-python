@@ -33,6 +33,7 @@ use pyo3::prelude::*;
 
 use crate::catalog::{PyCatalog, PyTable, RustWrappedPyCatalogProvider};
 use crate::dataframe::PyDataFrame;
+use crate::dataframe::PyTableProvider;
 use crate::dataset::Dataset;
 use crate::errors::{py_datafusion_err, to_datafusion_err, PyDataFusionResult};
 use crate::expr::sort_expr::PySortExpr;
@@ -417,12 +418,7 @@ impl PySessionContext {
             .with_listing_options(options)
             .with_schema(resolved_schema);
         let table = ListingTable::try_new(config)?;
-        self.register_table(
-            name,
-            &PyTable {
-                table: Arc::new(table),
-            },
-        )?;
+        self.ctx.register_table(name, Arc::new(table))?;
         Ok(())
     }
 
@@ -607,8 +603,32 @@ impl PySessionContext {
         Ok(df)
     }
 
-    pub fn register_table(&mut self, name: &str, table: &PyTable) -> PyDataFusionResult<()> {
-        self.ctx.register_table(name, table.table())?;
+    pub fn register_table(
+        &mut self,
+        name: &str,
+        table_provider: Bound<'_, PyAny>,
+    ) -> PyDataFusionResult<()> {
+        let provider = if table_provider.hasattr("__datafusion_table_provider__")? {
+            let capsule = table_provider
+                .getattr("__datafusion_table_provider__")?
+                .call0()?;
+            let capsule = capsule.downcast::<PyCapsule>().map_err(py_datafusion_err)?;
+            validate_pycapsule(capsule, "datafusion_table_provider")?;
+
+            let provider = unsafe { capsule.reference::<FFI_TableProvider>() };
+            let provider: ForeignTableProvider = provider.into();
+            Arc::new(provider) as Arc<dyn TableProvider + Send>
+        } else if let Ok(py_table) = table_provider.extract::<PyTable>() {
+            py_table.table()
+        } else if let Ok(py_provider) = table_provider.extract::<PyTableProvider>() {
+            py_provider.as_table().table()
+        } else {
+            return Err(crate::errors::PyDataFusionError::Common(
+                "Expected a Table or TableProvider.".to_string(),
+            ));
+        };
+
+        self.ctx.register_table(name, provider)?;
         Ok(())
     }
 
@@ -651,23 +671,8 @@ impl PySessionContext {
         name: &str,
         provider: Bound<'_, PyAny>,
     ) -> PyDataFusionResult<()> {
-        if provider.hasattr("__datafusion_table_provider__")? {
-            let capsule = provider.getattr("__datafusion_table_provider__")?.call0()?;
-            let capsule = capsule.downcast::<PyCapsule>().map_err(py_datafusion_err)?;
-            validate_pycapsule(capsule, "datafusion_table_provider")?;
-
-            let provider = unsafe { capsule.reference::<FFI_TableProvider>() };
-            let provider: ForeignTableProvider = provider.into();
-
-            let _ = self.ctx.register_table(name, Arc::new(provider))?;
-
-            Ok(())
-        } else {
-            Err(crate::errors::PyDataFusionError::Common(
-                "__datafusion_table_provider__ does not exist on Table Provider object."
-                    .to_string(),
-            ))
-        }
+        // Deprecated: use `register_table` instead
+        self.register_table(name, provider)
     }
 
     pub fn register_record_batches(
@@ -853,7 +858,7 @@ impl PySessionContext {
         dataset: &Bound<'_, PyAny>,
         py: Python,
     ) -> PyDataFusionResult<()> {
-        let table: Arc<dyn TableProvider> = Arc::new(Dataset::new(dataset, py)?);
+        let table: Arc<dyn TableProvider + Send> = Arc::new(Dataset::new(dataset, py)?);
 
         self.ctx.register_table(name, table)?;
 

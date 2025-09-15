@@ -40,6 +40,7 @@ except ImportError:
 from datafusion._internal import DataFrame as DataFrameInternal
 from datafusion._internal import ParquetColumnOptions as ParquetColumnOptionsInternal
 from datafusion._internal import ParquetWriterOptions as ParquetWriterOptionsInternal
+from datafusion._internal import TableProvider as TableProviderInternal
 from datafusion.expr import Expr, SortExpr, sort_or_default
 from datafusion.plan import ExecutionPlan, LogicalPlan
 from datafusion.record_batch import RecordBatchStream
@@ -307,8 +308,8 @@ class DataFrame:
         """
         self.df = df
 
-    def into_view(self) -> pa.Table:
-        """Convert DataFrame as a ViewTable which can be used in register_table."""
+    def into_view(self) -> TableProviderInternal:
+        """Convert ``DataFrame`` into a ``TableProvider`` view for registration."""
         return self.df.into_view()
 
     def __getitem__(self, key: str | list[str]) -> DataFrame:
