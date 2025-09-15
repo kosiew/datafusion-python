@@ -33,15 +33,15 @@ use pyo3::prelude::*;
 
 use crate::catalog::{PyCatalog, PyTable, RustWrappedPyCatalogProvider};
 use crate::dataframe::PyDataFrame;
-use crate::dataframe::PyTableProvider;
 use crate::dataset::Dataset;
-use crate::errors::{py_datafusion_err, to_datafusion_err, PyDataFusionResult};
+use crate::errors::{py_datafusion_err, to_datafusion_err, PyDataFusionError, PyDataFusionResult};
 use crate::expr::sort_expr::PySortExpr;
 use crate::physical_plan::PyExecutionPlan;
 use crate::record_batch::PyRecordBatchStream;
 use crate::sql::exceptions::py_value_err;
 use crate::sql::logical::PyLogicalPlan;
 use crate::store::StorageContexts;
+use crate::table::pyany_to_table_provider;
 use crate::udaf::PyAggregateUDF;
 use crate::udf::PyScalarUDF;
 use crate::udtf::PyTableFunction;
@@ -72,7 +72,6 @@ use datafusion::prelude::{
     AvroReadOptions, CsvReadOptions, DataFrame, NdJsonReadOptions, ParquetReadOptions,
 };
 use datafusion_ffi::catalog_provider::{FFI_CatalogProvider, ForeignCatalogProvider};
-use datafusion_ffi::table_provider::{FFI_TableProvider, ForeignTableProvider};
 use pyo3::types::{PyCapsule, PyDict, PyList, PyTuple, PyType};
 use pyo3::IntoPyObjectExt;
 use tokio::task::JoinHandle;
@@ -608,26 +607,9 @@ impl PySessionContext {
         name: &str,
         table_provider: Bound<'_, PyAny>,
     ) -> PyDataFusionResult<()> {
-        let provider = if table_provider.hasattr("__datafusion_table_provider__")? {
-            let capsule = table_provider
-                .getattr("__datafusion_table_provider__")?
-                .call0()?;
-            let capsule = capsule.downcast::<PyCapsule>().map_err(py_datafusion_err)?;
-            validate_pycapsule(capsule, "datafusion_table_provider")?;
-
-            let provider = unsafe { capsule.reference::<FFI_TableProvider>() };
-            let provider: ForeignTableProvider = provider.into();
-            Arc::new(provider) as Arc<dyn TableProvider + Send>
-        } else if let Ok(py_table) = table_provider.extract::<PyTable>() {
-            py_table.table()
-        } else if let Ok(py_provider) = table_provider.extract::<PyTableProvider>() {
-            py_provider.as_table().table()
-        } else {
-            return Err(crate::errors::PyDataFusionError::Common(
-                "Expected a Table or TableProvider.".to_string(),
-            ));
-        };
-
+        let provider = pyany_to_table_provider(&table_provider).map_err(|_| {
+            PyDataFusionError::Common("Expected a Table or TableProvider.".to_string())
+        })?;
         self.ctx.register_table(name, provider)?;
         Ok(())
     }
