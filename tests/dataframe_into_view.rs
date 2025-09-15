@@ -30,9 +30,10 @@ fn dataframe_into_view_returns_table_provider() {
         .unwrap();
 
     let rt = tokio::runtime::Runtime::new().unwrap();
-    let batches = rt
-        .block_on(ctx.sql("SELECT * FROM view").unwrap().collect())
-        .unwrap();
+    let batches = rt.block_on(async {
+        let df = ctx.sql("SELECT * FROM view").await.unwrap();
+        df.collect().await.unwrap()
+    });
 
     assert_eq!(batches.len(), 1);
     assert_eq!(batches[0].num_rows(), 3);
