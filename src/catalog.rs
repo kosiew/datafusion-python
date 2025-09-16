@@ -18,7 +18,7 @@
 use crate::dataset::Dataset;
 use crate::errors::{py_datafusion_err, to_datafusion_err, PyDataFusionError, PyDataFusionResult};
 use crate::table::PyTableProvider;
-use crate::utils::{validate_pycapsule, wait_for_future};
+use crate::utils::{table_provider_from_pycapsule, validate_pycapsule, wait_for_future};
 use async_trait::async_trait;
 use datafusion::catalog::{MemoryCatalogProvider, MemorySchemaProvider};
 use datafusion::common::DataFusionError;
@@ -28,7 +28,6 @@ use datafusion::{
     datasource::{TableProvider, TableType},
 };
 use datafusion_ffi::schema_provider::{FFI_SchemaProvider, ForeignSchemaProvider};
-use datafusion_ffi::table_provider::{FFI_TableProvider, ForeignTableProvider};
 use pyo3::exceptions::PyKeyError;
 use pyo3::prelude::*;
 use pyo3::types::PyCapsule;
@@ -197,16 +196,8 @@ impl PySchema {
     }
 
     fn register_table(&self, name: &str, table_provider: Bound<'_, PyAny>) -> PyResult<()> {
-        let provider = if table_provider.hasattr("__datafusion_table_provider__")? {
-            let capsule = table_provider
-                .getattr("__datafusion_table_provider__")?
-                .call0()?;
-            let capsule = capsule.downcast::<PyCapsule>().map_err(py_datafusion_err)?;
-            validate_pycapsule(capsule, "datafusion_table_provider")?;
-
-            let provider = unsafe { capsule.reference::<FFI_TableProvider>() };
-            let provider: ForeignTableProvider = provider.into();
-            Arc::new(provider) as Arc<dyn TableProvider + Send>
+        let provider = if let Some(provider) = table_provider_from_pycapsule(&table_provider)? {
+            provider
         } else {
             match table_provider.extract::<PyTable>() {
                 Ok(py_table) => py_table.table,
@@ -308,15 +299,8 @@ impl RustWrappedPySchemaProvider {
                 return Ok(None);
             }
 
-            if py_table.hasattr("__datafusion_table_provider__")? {
-                let capsule = py_table.getattr("__datafusion_table_provider__")?.call0()?;
-                let capsule = capsule.downcast::<PyCapsule>().map_err(py_datafusion_err)?;
-                validate_pycapsule(capsule, "datafusion_table_provider")?;
-
-                let provider = unsafe { capsule.reference::<FFI_TableProvider>() };
-                let provider: ForeignTableProvider = provider.into();
-
-                Ok(Some(Arc::new(provider) as Arc<dyn TableProvider + Send>))
+            if let Some(provider) = table_provider_from_pycapsule(&py_table)? {
+                Ok(Some(provider))
             } else {
                 if let Ok(inner_table) = py_table.getattr("table") {
                     if let Ok(inner_table) = inner_table.extract::<PyTable>() {

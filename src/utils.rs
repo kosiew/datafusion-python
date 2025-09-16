@@ -17,15 +17,21 @@
 
 use crate::{
     common::data_type::PyScalarValue,
-    errors::{PyDataFusionError, PyDataFusionResult},
+    errors::{py_datafusion_err, PyDataFusionError, PyDataFusionResult},
     TokioRuntime,
 };
 use datafusion::{
-    common::ScalarValue, execution::context::SessionContext, logical_expr::Volatility,
+    common::ScalarValue, datasource::TableProvider, execution::context::SessionContext,
+    logical_expr::Volatility,
 };
+use datafusion_ffi::table_provider::{FFI_TableProvider, ForeignTableProvider};
 use pyo3::prelude::*;
 use pyo3::{exceptions::PyValueError, types::PyCapsule};
-use std::{future::Future, sync::OnceLock, time::Duration};
+use std::{
+    future::Future,
+    sync::{Arc, OnceLock},
+    time::Duration,
+};
 use tokio::{runtime::Runtime, time::sleep};
 /// Utility to get the Tokio Runtime from Python
 #[inline]
@@ -114,6 +120,22 @@ pub(crate) fn validate_pycapsule(capsule: &Bound<PyCapsule>, name: &str) -> PyRe
     }
 
     Ok(())
+}
+
+pub(crate) fn table_provider_from_pycapsule(
+    obj: &Bound<PyAny>,
+) -> PyResult<Option<Arc<dyn TableProvider + Send>>> {
+    if obj.hasattr("__datafusion_table_provider__")? {
+        let capsule = obj.getattr("__datafusion_table_provider__")?.call0()?;
+        let capsule = capsule.downcast::<PyCapsule>().map_err(py_datafusion_err)?;
+        validate_pycapsule(capsule, "datafusion_table_provider")?;
+
+        let provider = unsafe { capsule.reference::<FFI_TableProvider>() };
+        let provider: ForeignTableProvider = provider.into();
+        Ok(Some(Arc::new(provider) as Arc<dyn TableProvider + Send>))
+    } else {
+        Ok(None)
+    }
 }
 
 pub(crate) fn py_obj_to_scalar_value(py: Python, obj: PyObject) -> PyResult<ScalarValue> {
