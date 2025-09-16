@@ -731,10 +731,11 @@ class SessionContext:
         """
         return DataFrame(self.ctx.from_polars(data, name))
 
-    # https://github.com/apache/datafusion-python/pull/1016#discussion_r1983239116
-    # is the discussion on how we arrived at adding register_view
     def register_view(self, name: str, df: DataFrame) -> None:
         """Register a :py:class: `~datafusion.detaframe.DataFrame` as a view.
+
+        The DataFrame is converted into a view before registration so it can be
+        referenced from SQL without materializing results immediately.
 
         Args:
             name (str): The name to register the view under.
