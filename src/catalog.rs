@@ -496,8 +496,6 @@ impl CatalogProvider for RustWrappedPyCatalogProvider {
         name: &str,
         schema: Arc<dyn SchemaProvider>,
     ) -> datafusion::common::Result<Option<Arc<dyn SchemaProvider>>> {
-        // JRIGHT HERE
-        // let py_schema: PySchema = schema.into();
         Python::with_gil(|py| {
             let py_schema = match schema
                 .as_any()
