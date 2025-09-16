@@ -750,6 +750,10 @@ class SessionContext:
         The registered table can be referenced from SQL statements executed against
         this context.
 
+        Plain :py:class:`~datafusion.dataframe.DataFrame` objects are not supported;
+        convert them first with :meth:`datafusion.dataframe.DataFrame.into_view` or
+        :meth:`datafusion.catalog.TableProvider.from_dataframe`.
+
         Args:
             name: Name of the resultant table.
             table: DataFusion :class:`Table` or :class:`TableProvider` to add to the

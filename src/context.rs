@@ -618,7 +618,7 @@ impl PySessionContext {
             py_provider.into_inner()
         } else {
             return Err(crate::errors::PyDataFusionError::Common(
-                "Expected a Table or TableProvider.".to_string(),
+                "Expected a Table or TableProvider. Convert DataFrames with \"DataFrame.into_view()\" or \"TableProvider.from_dataframe()\".".to_string(),
             ));
         };
 

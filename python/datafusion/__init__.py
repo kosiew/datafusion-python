@@ -66,7 +66,10 @@ from .user_defined import (
     udwf,
 )
 
-__version__ = importlib_metadata.version(__name__)
+try:
+    __version__ = importlib_metadata.version(__name__)
+except importlib_metadata.PackageNotFoundError:
+    __version__ = "0.0.0"
 
 __all__ = [
     "Accumulator",

@@ -356,8 +356,13 @@ def test_table_provider_from_capsule_invalid():
 
 def test_register_table_with_dataframe_errors(ctx):
     df = ctx.from_pydict({"a": [1]})
-    with pytest.raises(Exception):  # noqa: B017
+    with pytest.raises(Exception) as exc_info:  # noqa: B017
         ctx.register_table("bad", df)
+
+    assert (
+        str(exc_info.value)
+        == "Expected a Table or TableProvider. Convert DataFrames with \"DataFrame.into_view()\" or \"TableProvider.from_dataframe()\"."
+    )
 
 
 def test_register_dataset(ctx):
