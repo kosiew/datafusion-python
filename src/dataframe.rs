@@ -430,11 +430,7 @@ impl PyDataFrame {
 
     /// Convert this DataFrame into a Table that can be used in register_table
     /// By convention, into_... methods consume self and return the new object.
-    /// Disabling the clippy lint, so we can use &self
-    /// because we're working with Python bindings
-    /// where objects are shared
-    /// https://github.com/apache/datafusion-python/pull/1016#discussion_r1983239116
-    /// - we have not decided on the table_provider approach yet
+    /// Here we intentionally borrow to avoid invalidating the Python wrapper.
     #[allow(clippy::wrong_self_convention)]
     fn into_view(&self) -> PyDataFusionResult<PyTable> {
         // Call the underlying Rust DataFrame::into_view method.
