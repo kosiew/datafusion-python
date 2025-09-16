@@ -33,7 +33,7 @@ except ImportError:
 from . import functions, object_store, substrait, unparser
 
 # The following imports are okay to remain as opaque to the user.
-from ._internal import Config
+from ._internal import Config, TableProvider
 from .catalog import Catalog, Database, Table
 from .col import col, column
 from .common import (
@@ -66,7 +66,10 @@ from .user_defined import (
     udwf,
 )
 
-__version__ = importlib_metadata.version(__name__)
+try:
+    __version__ = importlib_metadata.version(__name__)
+except importlib_metadata.PackageNotFoundError:
+    __version__ = "0.0.0"
 
 __all__ = [
     "Accumulator",
@@ -90,6 +93,7 @@ __all__ = [
     "SessionContext",
     "Table",
     "TableFunction",
+    "TableProvider",
     "WindowFrame",
     "WindowUDF",
     "catalog",

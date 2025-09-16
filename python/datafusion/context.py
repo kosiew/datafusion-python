@@ -46,6 +46,7 @@ if TYPE_CHECKING:
     import pandas as pd
     import polars as pl
 
+    from datafusion import TableProvider
     from datafusion.plan import ExecutionPlan, LogicalPlan
 
 
@@ -734,7 +735,7 @@ class SessionContext:
     # https://github.com/apache/datafusion-python/pull/1016#discussion_r1983239116
     # is the discussion on how we arrived at adding register_view
     def register_view(self, name: str, df: DataFrame) -> None:
-        """Register a :py:class: `~datafusion.detaframe.DataFrame` as a view.
+        """Register a :py:class:`~datafusion.dataframe.DataFrame` as a view.
 
         Args:
             name (str): The name to register the view under.
@@ -743,16 +744,25 @@ class SessionContext:
         view = df.into_view()
         self.ctx.register_table(name, view)
 
-    def register_table(self, name: str, table: Table) -> None:
-        """Register a :py:class: `~datafusion.catalog.Table` as a table.
+    def register_table(self, name: str, table: Table | TableProvider) -> None:
+        """Register a :py:class:`~datafusion.catalog.Table` or ``TableProvider``.
 
-        The registered table can be referenced from SQL statement executed against.
+        The registered table can be referenced from SQL statements executed against
+        this context.
+
+        Plain :py:class:`~datafusion.dataframe.DataFrame` objects are not supported;
+        convert them first with :meth:`datafusion.dataframe.DataFrame.into_view` or
+        :meth:`datafusion.catalog.TableProvider.from_dataframe`.
 
         Args:
             name: Name of the resultant table.
-            table: DataFusion table to add to the session context.
+            table: DataFusion :class:`Table` or :class:`TableProvider` to add to the
+                session context.
         """
-        self.ctx.register_table(name, table.table)
+        if isinstance(table, Table):
+            self.ctx.register_table(name, table.table)
+        else:
+            self.ctx.register_table(name, table)
 
     def deregister_table(self, name: str) -> None:
         """Remove a table from the session."""
@@ -772,14 +782,18 @@ class SessionContext:
             self.ctx.register_catalog_provider(name, provider)
 
     def register_table_provider(
-        self, name: str, provider: TableProviderExportable
+        self, name: str, provider: TableProviderExportable | TableProvider
     ) -> None:
         """Register a table provider.
 
-        This table provider must have a method called ``__datafusion_table_provider__``
-        which returns a PyCapsule that exposes a ``FFI_TableProvider``.
+        Deprecated: use :meth:`register_table` instead.
         """
-        self.ctx.register_table_provider(name, provider)
+        warnings.warn(
+            "register_table_provider is deprecated; use register_table",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.register_table(name, provider)
 
     def register_udtf(self, func: TableFunction) -> None:
         """Register a user defined table function."""
