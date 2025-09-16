@@ -52,7 +52,6 @@ pub mod pyarrow_util;
 mod record_batch;
 pub mod sql;
 pub mod store;
-pub mod table;
 pub mod unparser;
 
 #[cfg(feature = "substrait")]
@@ -89,7 +88,6 @@ fn _internal(py: Python, m: Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<dataframe::PyDataFrame>()?;
     m.add_class::<dataframe::PyParquetColumnOptions>()?;
     m.add_class::<dataframe::PyParquetWriterOptions>()?;
-    m.add_class::<dataframe::PyTableProvider>()?;
     m.add_class::<udf::PyScalarUDF>()?;
     m.add_class::<udaf::PyAggregateUDF>()?;
     m.add_class::<udwf::PyWindowUDF>()?;
@@ -99,7 +97,6 @@ fn _internal(py: Python, m: Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<physical_plan::PyExecutionPlan>()?;
     m.add_class::<record_batch::PyRecordBatch>()?;
     m.add_class::<record_batch::PyRecordBatchStream>()?;
-    m.add_class::<table::PyTableProvider>()?;
 
     let catalog = PyModule::new(py, "catalog")?;
     catalog::init_module(&catalog)?;

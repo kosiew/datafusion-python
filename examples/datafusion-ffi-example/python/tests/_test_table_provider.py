@@ -18,16 +18,14 @@
 from __future__ import annotations
 
 import pyarrow as pa
-from datafusion import SessionContext, TableProvider
+from datafusion import SessionContext
 from datafusion_ffi_example import MyTableProvider
 
 
 def test_table_loading():
     ctx = SessionContext()
     table = MyTableProvider(3, 2, 4)
-    ctx.register_table(
-        "t", TableProvider.from_capsule(table.__datafusion_table_provider__())
-    )
+    ctx.register_table_provider("t", table)
     result = ctx.table("t").collect()
 
     assert len(result) == 4
