@@ -80,7 +80,7 @@ impl PyTableProvider {
     /// This method simply delegates to `DataFrame.into_view`.
     #[staticmethod]
     pub fn from_dataframe(df: &PyDataFrame) -> PyDataFusionResult<Self> {
-        let table_provider = df.into_view_provider();
+        let table_provider = df.to_view_provider();
         Ok(Self::new(table_provider))
     }
 
