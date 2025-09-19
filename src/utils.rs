@@ -28,11 +28,17 @@ use datafusion_ffi::table_provider::{FFI_TableProvider, ForeignTableProvider};
 use pyo3::prelude::*;
 use pyo3::{exceptions::PyValueError, types::PyCapsule};
 use std::{
+    ffi::CStr,
     future::Future,
     sync::{Arc, OnceLock},
     time::Duration,
 };
 use tokio::{runtime::Runtime, time::sleep};
+
+pub const TABLE_PROVIDER_CAPSULE_NAME: &CStr =
+    unsafe { CStr::from_bytes_with_nul_unchecked(b"datafusion_table_provider\0") };
+
+pub const TABLE_PROVIDER_CAPSULE_NAME_STR: &str = "datafusion_table_provider";
 /// Utility to get the Tokio Runtime from Python
 #[inline]
 pub(crate) fn get_tokio_runtime() -> &'static TokioRuntime {
@@ -125,7 +131,7 @@ pub(crate) fn validate_pycapsule(capsule: &Bound<PyCapsule>, name: &str) -> PyRe
 pub(crate) fn foreign_table_provider_from_capsule(
     capsule: &Bound<PyCapsule>,
 ) -> PyResult<ForeignTableProvider> {
-    validate_pycapsule(capsule, "datafusion_table_provider")?;
+    validate_pycapsule(capsule, TABLE_PROVIDER_CAPSULE_NAME_STR)?;
     Ok(unsafe { capsule.reference::<FFI_TableProvider>() }.into())
 }
 

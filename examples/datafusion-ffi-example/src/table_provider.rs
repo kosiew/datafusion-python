@@ -19,6 +19,7 @@ use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::{DataType, Field, Schema};
 use datafusion::catalog::MemTable;
 use datafusion::error::{DataFusionError, Result as DataFusionResult};
+use datafusion_python::utils::TABLE_PROVIDER_CAPSULE_NAME;
 use datafusion_ffi::table_provider::FFI_TableProvider;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::types::PyCapsule;
@@ -91,13 +92,11 @@ impl MyTableProvider {
         &self,
         py: Python<'py>,
     ) -> PyResult<Bound<'py, PyCapsule>> {
-        let name = cr"datafusion_table_provider".into();
-
         let provider = self
             .create_table()
             .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
         let provider = FFI_TableProvider::new(Arc::new(provider), false, None);
 
-        PyCapsule::new(py, provider, Some(name))
+        PyCapsule::new(py, provider, Some(TABLE_PROVIDER_CAPSULE_NAME.to_owned()))
     }
 }
