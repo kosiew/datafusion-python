@@ -34,6 +34,7 @@ def main() -> None:
     # ``__datafusion_table_provider__`` helper that PyTableFunction expects.
     try:
         ctx.sql("SELECT * FROM capsule_dependent()").collect()
+        print("capsule_dependent() works")
     except NotImplementedError as err:
         # Document the regression by surfacing the missing capsule attribute
         # instead of crashing with a panic inside the execution engine.
