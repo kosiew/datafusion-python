@@ -42,6 +42,9 @@ Here is a direct link to the file used in the examples:
 
 - [Register a Python UDF with DataFusion](./python-udf.py)
 - [Register a Python UDAF with DataFusion](./python-udaf.py)
+- [Reproduce missing table-provider capsule failures in Python integrations](./python-udtf-table-capsule-regression.py)
+    - Demonstrates how a Python UDTF and catalog consumer currently raise
+      exceptions when `__datafusion_table_provider__` is unavailable.
 
 ### Substrait Support
 
