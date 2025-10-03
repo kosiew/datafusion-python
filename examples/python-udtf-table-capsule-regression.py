@@ -19,10 +19,10 @@ def main() -> None:
 
     ctx.register_udtf(table_from_sql_udtf)
 
-    try:
-        ctx.sql("SELECT * FROM table(table_from_sql())").collect()
-    except NotImplementedError as err:
-        print("Collecting from table_from_sql() failed:", err)
+    result = ctx.sql("SELECT * FROM table_from_sql()").collect()
+    as_pydict = [batch.to_pydict() for batch in result]
+    print("table_from_sql() returned:", as_pydict)
+    assert as_pydict == [{"value": [1]}]
 
     ctx.register_table("numbers", Table(ctx.sql("SELECT 1 AS value")))
 

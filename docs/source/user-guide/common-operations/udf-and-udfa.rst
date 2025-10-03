@@ -254,6 +254,26 @@ Provider as described in the ref:`_io_custom_table_provider` page.
 Once you have a table function, you can register it with the session context
 by using :py:func:`datafusion.context.SessionContext.register_udtf`.
 
+.. code-block:: python
+
+    from datafusion import SessionContext, Table, udtf
+
+    ctx = SessionContext()
+
+    @udtf("table_from_sql")
+    def table_from_sql_udtf() -> Table:
+        return Table.from_dataframe(ctx.sql("SELECT 1 AS value"))
+
+    ctx.register_udtf(table_from_sql_udtf)
+
+    ctx.sql("SELECT * FROM table_from_sql()").show()
+
+.. note::
+
+    The ``TABLE(...)`` wrapper syntax is not currently implemented for
+    invoking table functions from SQL. Call the function directly instead,
+    such as ``SELECT * FROM my_table_function()``.
+
 There are examples of both rust backed and python based table functions in the
 examples folder of the repository. If you have a rust backed table function
 that you wish to expose via PyO3, you need to expose it as a ``PyCapsule``.
