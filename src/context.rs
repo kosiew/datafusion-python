@@ -429,7 +429,7 @@ impl PySessionContext {
     }
 
     /// Returns a PyDataFrame whose plan corresponds to the SQL statement.
-    pub fn sql(&self, query: &str, py: Python) -> PyDataFusionResult<PyDataFrame> {
+    pub fn sql(&mut self, query: &str, py: Python) -> PyDataFusionResult<PyDataFrame> {
         let result = self.ctx.sql(query);
         let df = wait_for_future(py, result)??;
         Ok(PyDataFrame::new(df))
@@ -437,7 +437,7 @@ impl PySessionContext {
 
     #[pyo3(signature = (query, options=None))]
     pub fn sql_with_options(
-        &self,
+        &mut self,
         query: &str,
         options: Option<PySQLOptions>,
         py: Python,
