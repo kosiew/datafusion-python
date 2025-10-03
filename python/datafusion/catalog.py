@@ -166,11 +166,16 @@ class Table:
 
     def __init__(
         self,
-        table: _InternalRawTable | _InternalTableProvider | Table,
+        table: _InternalRawTable | _InternalTableProvider | Table | Any,
     ) -> None:
-        """Wrap a low level table or table provider."""
+        """Wrap a low level table, table provider, or convertibles like DataFrame."""
         if isinstance(table, Table):
             table = table.table
+        else:
+            from datafusion.dataframe import DataFrame as DataFrameWrapper
+
+            if isinstance(table, DataFrameWrapper):
+                table = table.df.into_view()
 
         if not isinstance(table, (_InternalRawTable, _InternalTableProvider)):
             raise TypeError(EXPECTED_PROVIDER_MSG)

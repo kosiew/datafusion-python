@@ -82,7 +82,7 @@ where
     const INTERVAL_CHECK_SIGNALS: Duration = Duration::from_millis(1_000);
 
     py.allow_threads(|| {
-        runtime.block_on(async {
+        let wait_future = || async {
             tokio::pin!(fut);
             loop {
                 tokio::select! {
@@ -92,7 +92,13 @@ where
                     }
                 }
             }
-        })
+        };
+
+        if tokio::runtime::Handle::try_current().is_ok() {
+            tokio::task::block_in_place(|| runtime.block_on(wait_future()))
+        } else {
+            runtime.block_on(wait_future())
+        }
     })
 }
 

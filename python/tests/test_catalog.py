@@ -196,6 +196,20 @@ def test_schema_register_table_with_dataframe_errors(ctx: SessionContext):
     assert str(exc_info.value) == EXPECTED_PROVIDER_MSG
 
 
+def test_table_wraps_dataframe(ctx: SessionContext):
+    df = ctx.sql("SELECT 1 AS value")
+
+    table = Table(df)
+    ctx.register_table("df_table", table)
+
+    try:
+        batches = ctx.sql("SELECT value FROM df_table").collect()
+        assert len(batches) == 1
+        assert batches[0].column(0).to_pylist() == [1]
+    finally:
+        ctx.deregister_table("df_table")
+
+
 def test_in_end_to_end_python_providers(ctx: SessionContext):
     """Test registering all python providers and running a query against them."""
 
