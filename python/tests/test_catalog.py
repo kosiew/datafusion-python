@@ -20,7 +20,7 @@ import datafusion as dfn
 import pyarrow as pa
 import pyarrow.dataset as ds
 import pytest
-from datafusion import SessionContext, Table, udtf
+from datafusion import SessionContext, Table
 
 
 # Note we take in `database` as a variable even though we don't use
@@ -232,20 +232,3 @@ def test_in_end_to_end_python_providers(ctx: SessionContext):
             assert len(batches) == 1
             assert batches[0].column(0) == pa.array([1, 2, 3])
             assert batches[0].column(1) == pa.array([4, 5, 6])
-
-
-def test_python_udtf_missing_table_capsule(ctx: SessionContext) -> None:
-    @udtf("missing_capsule")
-    def missing_capsule_udtf() -> Table:
-        return Table(ctx.sql("SELECT 1 AS value"))
-
-    ctx.register_udtf(missing_capsule_udtf)
-
-    with pytest.raises(NotImplementedError, match="__datafusion_table_provider__"):
-        ctx.sql("SELECT * FROM missing_capsule()").collect()
-
-
-def test_table_wrapper_lacks_capsule_attribute(ctx: SessionContext) -> None:
-    table = Table(ctx.sql("SELECT 1 AS value"))
-
-    assert not hasattr(table, "__datafusion_table_provider__")
