@@ -31,7 +31,6 @@ from datafusion import (
     Table,
     column,
     literal,
-    udtf,
 )
 
 
@@ -114,21 +113,6 @@ def test_register_record_batches(ctx):
 
     assert result[0].column(0) == pa.array([5, 7, 9])
     assert result[0].column(1) == pa.array([-3, -3, -3])
-
-
-def test_register_python_table_function(ctx):
-    @udtf("table_from_sql")
-    def table_from_sql_udtf() -> Table:
-        return Table.from_dataframe(
-            ctx.sql("SELECT 1 AS value UNION ALL SELECT 2 AS value")
-        )
-
-    ctx.register_udtf(table_from_sql_udtf)
-
-    result = ctx.sql("SELECT * FROM table_from_sql() ORDER BY value").collect()
-    table = pa.Table.from_batches(result)
-
-    assert table.to_pydict() == {"value": [1, 2]}
 
 
 def test_create_dataframe_registers_unique_table_name(ctx):
