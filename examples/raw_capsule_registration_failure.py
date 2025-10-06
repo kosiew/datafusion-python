@@ -29,7 +29,7 @@ def make_table_provider_capsule() -> object:
     pycapsule_new.restype = ctypes.py_object
     pycapsule_new.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p]
     dummy_ptr = ctypes.cast(_DUMMY_CAPSULE_BYTES, ctypes.c_void_p)
-    return pycapsule_new(dummy_ptr, b"datafusion_table_provider", None)
+    return pycapsule_new(dummy_ptr, b"__datafusion_table_provider__", None)
 
 
 def main() -> None:
