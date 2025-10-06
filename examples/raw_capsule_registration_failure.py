@@ -42,10 +42,7 @@ def main() -> None:
         print("Creating the PyCapsule failed:", err)
         return
 
-    try:
-        ctx.read_table(capsule)
-    except ValueError as err:
-        print("Registering capsule with SessionContext failed:", err)
+    ctx.read_table(capsule)
 
 
 if __name__ == "__main__":
