@@ -36,15 +36,14 @@ def main() -> None:
     """Attempt to use the capsule the same way existing callers do."""
 
     ctx = SessionContext()
-    capsule = make_table_provider_capsule()
+    try:
+        capsule = make_table_provider_capsule()
+    except Exception as err:
+        print("Creating the PyCapsule failed:", err)
+        return
 
     try:
-        Table(capsule)
-    except ValueError as err:
-        print("Constructing Table(capsule) failed:", err)
-
-    try:
-        ctx.register_table("capsule", capsule)
+        ctx.read_table(capsule)
     except ValueError as err:
         print("Registering capsule with SessionContext failed:", err)
 

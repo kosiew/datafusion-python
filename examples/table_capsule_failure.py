@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from datafusion import SessionContext, Table, udtf
 
-
 def main() -> None:
     """Register a Python table UDTF that returns a ``Table`` and trigger it."""
 
