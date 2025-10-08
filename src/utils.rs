@@ -185,7 +185,11 @@ pub(crate) fn table_provider_from_capsule(
 pub(crate) fn table_provider_from_pycapsule(
     obj: &Bound<PyAny>,
 ) -> PyResult<Option<Arc<dyn TableProvider>>> {
-    if obj.hasattr("__datafusion_table_provider__")? {
+    if let Ok(capsule) = obj.downcast::<PyCapsule>() {
+        let provider = table_provider_from_capsule(&capsule)?;
+
+        Ok(Some(provider))
+    } else if obj.hasattr("__datafusion_table_provider__")? {
         let capsule = obj.getattr("__datafusion_table_provider__")?.call0()?;
         let capsule = capsule.downcast::<PyCapsule>().map_err(py_datafusion_err)?;
         let provider = table_provider_from_capsule(&capsule)?;

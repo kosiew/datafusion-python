@@ -33,6 +33,20 @@ from datafusion import (
     literal,
 )
 
+_PYCAPSULE_NEW = ctypes.pythonapi.PyCapsule_New
+_PYCAPSULE_NEW.restype = ctypes.py_object
+_PYCAPSULE_NEW.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p]
+
+
+def _make_invalid_table_provider_capsule():
+    backing = ctypes.create_string_buffer(b"x")
+    capsule = _PYCAPSULE_NEW(
+        ctypes.cast(backing, ctypes.c_void_p),
+        b"datafusion_table_provider",
+        None,
+    )
+    return capsule, backing
+
 
 def test_create_context_no_args():
     SessionContext()
@@ -345,20 +359,12 @@ def test_read_table_from_dataset(ctx):
 def test_read_table_rejects_invalid_table_provider_capsule(ctx):
     class CapsuleContainer:
         def __init__(self) -> None:
-            self._buffer = ctypes.create_string_buffer(b"x")
+            self._buffers: list[ctypes.Array[ctypes.c_char]] = []
 
         def __datafusion_table_provider__(self) -> object:
-            pycapsule_new = ctypes.pythonapi.PyCapsule_New
-            pycapsule_new.restype = ctypes.py_object
-            pycapsule_new.argtypes = [
-                ctypes.c_void_p,
-                ctypes.c_char_p,
-                ctypes.c_void_p,
-            ]
-            dummy_ptr = ctypes.cast(self._buffer, ctypes.c_void_p)
-            return pycapsule_new(
-                dummy_ptr, b"datafusion_table_provider", None
-            )
+            capsule, backing = _make_invalid_table_provider_capsule()
+            self._buffers.append(backing)
+            return capsule
 
     container = CapsuleContainer()
 
@@ -369,6 +375,18 @@ def test_read_table_rejects_invalid_table_provider_capsule(ctx):
         Table.from_table_provider_capsule(
             container.__datafusion_table_provider__()
         )
+
+
+def test_read_table_with_raw_table_provider_capsule(ctx):
+    df_internal = pytest.importorskip("datafusion._internal")
+    assert hasattr(
+        df_internal.catalog.RawTable, "from_table_provider_capsule"
+    )
+
+    capsule, _backing = _make_invalid_table_provider_capsule()
+
+    with pytest.raises(ValueError, match="missing a destructor"):
+        ctx.read_table(capsule)
 
 
 def test_deregister_table(ctx, database):
