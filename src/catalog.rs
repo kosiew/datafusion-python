@@ -19,20 +19,24 @@ use crate::dataset::Dataset;
 use crate::errors::{py_datafusion_err, to_datafusion_err, PyDataFusionError, PyDataFusionResult};
 use crate::table::PyTable;
 use crate::utils::{validate_pycapsule, wait_for_future};
+use arrow_array::RecordBatch;
+use arrow_schema::Schema;
 use async_trait::async_trait;
 use datafusion::catalog::{MemoryCatalogProvider, MemorySchemaProvider};
 use datafusion::common::DataFusionError;
 use datafusion::{
     catalog::{CatalogProvider, SchemaProvider},
-    datasource::TableProvider,
+    datasource::{MemTable, TableProvider},
 };
 use datafusion_ffi::schema_provider::{FFI_SchemaProvider, ForeignSchemaProvider};
+use datafusion_ffi::table_provider::FFI_TableProvider;
 use pyo3::exceptions::PyKeyError;
 use pyo3::prelude::*;
 use pyo3::types::PyCapsule;
 use pyo3::IntoPyObjectExt;
 use std::any::Any;
 use std::collections::HashSet;
+use std::ffi::CString;
 use std::sync::Arc;
 
 #[pyclass(name = "RawCatalog", module = "datafusion.catalog", subclass)]
@@ -452,10 +456,22 @@ impl CatalogProvider for RustWrappedPyCatalogProvider {
     }
 }
 
+#[pyfunction]
+pub fn make_table_provider_capsule(py: Python<'_>) -> PyResult<Bound<'_, PyCapsule>> {
+    let schema = Arc::new(Schema::new(vec![]));
+    let batch = RecordBatch::new_empty(Arc::clone(&schema));
+    let provider = MemTable::try_new(schema, vec![vec![batch]]).map_err(py_datafusion_err)?;
+    let provider = FFI_TableProvider::new(Arc::new(provider), false, None);
+    let name = CString::new("datafusion_table_provider").expect("static capsule name");
+
+    PyCapsule::new(py, provider, Some(name))
+}
+
 pub(crate) fn init_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyCatalog>()?;
     m.add_class::<PySchema>()?;
     m.add_class::<PyTable>()?;
+    m.add_function(pyo3::wrap_pyfunction!(make_table_provider_capsule, m)?)?;
 
     Ok(())
 }

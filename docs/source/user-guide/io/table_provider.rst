@@ -28,6 +28,15 @@ via `PyCapsule <https://pyo3.rs/main/doc/pyo3/types/struct.pycapsule>`_.
 
 A complete example can be found in the `examples folder <https://github.com/apache/datafusion-python/tree/main/examples>`_.
 
+.. note::
+
+   DataFusion validates that table-provider capsules were created through the
+   ``datafusion_ffi`` helpers so that the release callback is installed. Use a
+   helper such as :func:`datafusion.catalog.make_table_provider_capsule` (for an
+   empty in-memory provider) or the constructors provided by :mod:`datafusion_ffi`
+   when fabricating capsules for tests and examples instead of calling
+   ``PyCapsule_New`` directly.
+
 .. code-block:: rust
 
     #[pymethods]

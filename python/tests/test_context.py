@@ -32,6 +32,7 @@ from datafusion import (
     column,
     literal,
 )
+from datafusion.catalog import make_table_provider_capsule
 
 _PYCAPSULE_NEW = ctypes.pythonapi.PyCapsule_New
 _PYCAPSULE_NEW.restype = ctypes.py_object
@@ -372,21 +373,27 @@ def test_read_table_rejects_invalid_table_provider_capsule(ctx):
         ctx.read_table(container)
 
     with pytest.raises(ValueError, match="missing a destructor"):
-        Table.from_table_provider_capsule(
-            container.__datafusion_table_provider__()
-        )
+        Table.from_table_provider_capsule(container.__datafusion_table_provider__())
 
 
 def test_read_table_with_raw_table_provider_capsule(ctx):
     df_internal = pytest.importorskip("datafusion._internal")
-    assert hasattr(
-        df_internal.catalog.RawTable, "from_table_provider_capsule"
-    )
+    assert hasattr(df_internal.catalog.RawTable, "from_table_provider_capsule")
 
     capsule, _backing = _make_invalid_table_provider_capsule()
 
     with pytest.raises(ValueError, match="missing a destructor"):
         ctx.read_table(capsule)
+
+
+def test_read_table_accepts_valid_table_provider_capsule(ctx):
+    capsule = make_table_provider_capsule()
+    result = ctx.read_table(capsule).collect()
+    assert result == []
+
+    table_capsule = make_table_provider_capsule()
+    table = Table.from_table_provider_capsule(table_capsule)
+    assert table.kind in {"physical", "view", "temporary"}
 
 
 def test_deregister_table(ctx, database):

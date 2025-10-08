@@ -42,6 +42,7 @@ __all__ = [
     "Schema",
     "SchemaProvider",
     "Table",
+    "make_table_provider_capsule",
 ]
 
 
@@ -182,9 +183,7 @@ class Table:
     def from_table_provider_capsule(capsule: object) -> Table:
         """Wrap a validated table provider :class:`PyCapsule` as a :class:`Table`."""
 
-        return Table(
-            df_internal.catalog.RawTable.from_table_provider_capsule(capsule)
-        )
+        return Table(df_internal.catalog.RawTable.from_table_provider_capsule(capsule))
 
     @property
     def schema(self) -> pa.Schema:
@@ -195,6 +194,18 @@ class Table:
     def kind(self) -> str:
         """Returns the kind of table."""
         return self._inner.kind
+
+
+def make_table_provider_capsule() -> object:
+    """Return a minimal table-provider capsule with a valid release hook.
+
+    DataFusion validates that table-provider capsules originate from
+    :mod:`datafusion_ffi` helpers so the release callback is registered. This
+    helper exposes that functionality to Python callers by fabricating an empty
+    in-memory table provider using :mod:`datafusion_ffi` under the hood.
+    """
+
+    return df_internal.catalog.make_table_provider_capsule()
 
 
 class CatalogProvider(ABC):
