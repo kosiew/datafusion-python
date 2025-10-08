@@ -178,6 +178,14 @@ class Table:
         """Turn a :mod:`pyarrow.dataset` ``Dataset`` into a :class:`Table`."""
         return Table(dataset)
 
+    @staticmethod
+    def from_table_provider_capsule(capsule: object) -> Table:
+        """Wrap a validated table provider :class:`PyCapsule` as a :class:`Table`."""
+
+        return Table(
+            df_internal.catalog.RawTable.from_table_provider_capsule(capsule)
+        )
+
     @property
     def schema(self) -> pa.Schema:
         """Returns the schema associated with this table."""

@@ -29,7 +29,7 @@ except ImportError:
 
 import pyarrow as pa
 
-from datafusion.catalog import Catalog
+from datafusion.catalog import Catalog, Table
 from datafusion.dataframe import DataFrame
 from datafusion.expr import sort_list_to_raw_sort_list
 from datafusion.record_batch import RecordBatchStream
@@ -1181,6 +1181,16 @@ class SessionContext:
         self, table: Table | TableProviderExportable | DataFrame | pa.dataset.Dataset
     ) -> DataFrame:
         """Creates a :py:class:`~datafusion.dataframe.DataFrame` from a table."""
+        if not isinstance(table, Table):
+            capsule_obj: object | None = None
+            if hasattr(table, "__datafusion_table_provider__"):
+                capsule_obj = table.__datafusion_table_provider__()
+            elif table.__class__.__name__ == "PyCapsule":
+                capsule_obj = table
+
+            if capsule_obj is not None:
+                table = Table.from_table_provider_capsule(capsule_obj)
+
         return DataFrame(self.ctx.read_table(table))
 
     def execute(self, plan: ExecutionPlan, partitions: int) -> RecordBatchStream:

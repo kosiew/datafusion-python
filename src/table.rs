@@ -18,11 +18,13 @@
 use arrow::pyarrow::ToPyArrow;
 use datafusion::datasource::{TableProvider, TableType};
 use pyo3::prelude::*;
+use pyo3::types::PyCapsule;
 use std::sync::Arc;
 
 use crate::dataframe::PyDataFrame;
 use crate::dataset::Dataset;
-use crate::utils::table_provider_from_pycapsule;
+use crate::errors::py_datafusion_err;
+use crate::utils::{table_provider_from_capsule, table_provider_from_pycapsule};
 
 /// This struct is used as a common method for all TableProviders,
 /// whether they refer to an FFI provider, an internally known
@@ -75,6 +77,13 @@ impl PyTable {
             let provider = Arc::new(Dataset::new(obj, py)?) as Arc<dyn TableProvider>;
             Ok(PyTable::from(provider))
         }
+    }
+
+    #[staticmethod]
+    pub fn from_table_provider_capsule(capsule: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let capsule = capsule.downcast::<PyCapsule>().map_err(py_datafusion_err)?;
+        let provider = table_provider_from_capsule(&capsule)?;
+        Ok(PyTable::from(provider))
     }
 
     /// Get a reference to the schema for this table

@@ -27,7 +27,7 @@ use datafusion::{
 };
 use datafusion_ffi::table_provider::{FFI_TableProvider, ForeignTableProvider};
 use pyo3::prelude::*;
-use pyo3::{exceptions::PyValueError, types::PyCapsule};
+use pyo3::{exceptions::PyValueError, ffi, types::PyCapsule};
 use std::{
     future::Future,
     sync::{Arc, OnceLock},
@@ -124,18 +124,73 @@ pub(crate) fn validate_pycapsule(capsule: &Bound<PyCapsule>, name: &str) -> PyRe
     Ok(())
 }
 
+fn ensure_capsule_has_destructor(capsule: &Bound<PyCapsule>) -> PyResult<()> {
+    if unsafe { ffi::PyCapsule_GetDestructor(capsule.as_ptr()) }.is_none() {
+        return Err(PyValueError::new_err(
+            "Table provider capsule is missing a destructor; ensure it was created via datafusion_ffi's helpers.",
+        ));
+    }
+
+    Ok(())
+}
+
+fn ensure_capsule_pointer(capsule: &Bound<PyCapsule>) -> PyResult<()> {
+    let ptr = capsule.pointer();
+    if ptr.is_null() {
+        return Err(PyValueError::new_err(
+            "Table provider capsule contained a null pointer.",
+        ));
+    }
+
+    if (ptr as usize) % std::mem::align_of::<FFI_TableProvider>() != 0 {
+        return Err(PyValueError::new_err(
+            "Table provider capsule pointer was not aligned for FFI_TableProvider.",
+        ));
+    }
+
+    Ok(())
+}
+
+fn validate_foreign_table_provider(provider: &FFI_TableProvider) -> PyResult<()> {
+    if provider.schema as usize == 0
+        || provider.scan as usize == 0
+        || provider.table_type as usize == 0
+        || provider.clone as usize == 0
+        || provider.release as usize == 0
+        || provider.version as usize == 0
+        || provider.private_data.is_null()
+    {
+        return Err(PyValueError::new_err(
+            "Table provider capsule is missing required function pointers.",
+        ));
+    }
+
+    Ok(())
+}
+
+pub(crate) fn table_provider_from_capsule(
+    capsule: &Bound<PyCapsule>,
+) -> PyResult<Arc<dyn TableProvider>> {
+    validate_pycapsule(capsule, "datafusion_table_provider")?;
+    ensure_capsule_has_destructor(capsule)?;
+    ensure_capsule_pointer(capsule)?;
+
+    let provider = unsafe { capsule.reference::<FFI_TableProvider>() };
+    validate_foreign_table_provider(provider)?;
+    let provider: ForeignTableProvider = provider.into();
+
+    Ok(Arc::new(provider))
+}
+
 pub(crate) fn table_provider_from_pycapsule(
     obj: &Bound<PyAny>,
 ) -> PyResult<Option<Arc<dyn TableProvider>>> {
     if obj.hasattr("__datafusion_table_provider__")? {
         let capsule = obj.getattr("__datafusion_table_provider__")?.call0()?;
         let capsule = capsule.downcast::<PyCapsule>().map_err(py_datafusion_err)?;
-        validate_pycapsule(capsule, "datafusion_table_provider")?;
+        let provider = table_provider_from_capsule(&capsule)?;
 
-        let provider = unsafe { capsule.reference::<FFI_TableProvider>() };
-        let provider: ForeignTableProvider = provider.into();
-
-        Ok(Some(Arc::new(provider)))
+        Ok(Some(provider))
     } else {
         Ok(None)
     }

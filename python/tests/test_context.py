@@ -14,6 +14,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+import ctypes
 import datetime as dt
 import gzip
 import pathlib
@@ -339,6 +340,35 @@ def test_read_table_from_dataset(ctx):
 
     assert result[0].column(0) == pa.array([1, 2, 3])
     assert result[0].column(1) == pa.array([4, 5, 6])
+
+
+def test_read_table_rejects_invalid_table_provider_capsule(ctx):
+    class CapsuleContainer:
+        def __init__(self) -> None:
+            self._buffer = ctypes.create_string_buffer(b"x")
+
+        def __datafusion_table_provider__(self) -> object:
+            pycapsule_new = ctypes.pythonapi.PyCapsule_New
+            pycapsule_new.restype = ctypes.py_object
+            pycapsule_new.argtypes = [
+                ctypes.c_void_p,
+                ctypes.c_char_p,
+                ctypes.c_void_p,
+            ]
+            dummy_ptr = ctypes.cast(self._buffer, ctypes.c_void_p)
+            return pycapsule_new(
+                dummy_ptr, b"datafusion_table_provider", None
+            )
+
+    container = CapsuleContainer()
+
+    with pytest.raises(ValueError, match="missing a destructor"):
+        ctx.read_table(container)
+
+    with pytest.raises(ValueError, match="missing a destructor"):
+        Table.from_table_provider_capsule(
+            container.__datafusion_table_provider__()
+        )
 
 
 def test_deregister_table(ctx, database):
