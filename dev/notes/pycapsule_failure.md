@@ -1,38 +1,36 @@
 # PyCapsule Read Failure Analysis
 
 ## Symptom
-Running `python examples/pycapsule_failure.py` terminates the interpreter with a segmentation fault.
+Running `python examples/pycapsule_failure.py` now fails immediately with
+``ValueError: Table provider capsule is missing a destructor`` when
+``SessionContext.read_table`` attempts to coerce the fabricated capsule.
 
 ## Regression Surface
-Commit range `9b4f1442^..d629ced2` replaced the `Table` wrapper-based API with a generic constructor that accepts arbitrary Python objects and auto-discovers how to turn them into a `TableProvider`. The new `PyTable::new` implementation in Rust now attempts to coerce any object that exposes `__datafusion_table_provider__` into an FFI provider. 【F:src/table.rs†L54-L77】
+Commit range `9b4f1442^..6e449da5` teaches
+``table_provider_from_pycapsule`` to recognize raw ``PyCapsule`` instances
+before checking for a ``__datafusion_table_provider__`` attribute.
+【F:src/utils.rs†L205-L222】 As soon as ``SessionContext.read_table`` sees the
+dummy capsule exposed by the example it now calls straight into the capsule
+conversion path without first wrapping it in ``Table``.
 
 ## Root Cause
-`table_provider_from_pycapsule` only validates the capsule name before transmuting its pointer into an `FFI_TableProvider`. 【F:src/utils.rs†L127-L141】 The helper assumes the capsule contains a valid `FFI_TableProvider` allocation created by our bindings. The regression example fabricates a capsule with the correct name but with an arbitrary pointer (`ctypes.create_string_buffer`). 【F:examples/pycapsule_failure.py†L8-L24】 Because the new constructor now reaches this path for any `read_table` call, the bogus pointer is dereferenced immediately, corrupting memory and crashing the interpreter.
-
-Prior to the refactor, callers could not pass arbitrary capsule-bearing objects to `SessionContext.read_table`; they first had to wrap them in `Table`/`RawTable`, which were only constructible through safe helpers that produced trusted capsules. The new auto-coercion path therefore widened the attack surface to unvalidated capsules, exposing the latent unsafety.
+The new fast-path reuses ``table_provider_from_capsule``, which enforces that
+the capsule has a destructor originating from ``datafusion_ffi``’s helper.
+【F:src/utils.rs†L193-L205】 The regression example still fabricates its capsule
+with ``PyCapsule_New`` and passes ``NULL`` for the destructor.
+【F:examples/pycapsule_failure.py†L10-L24】 Because no release callback is
+registered, the validation now fails with the ``missing a destructor`` error.
+Prior to the change, the example first wrapped the capsule in ``Table`` which
+never triggered the destructor check, masking the issue.
 
 ## Runtime failure after 91b90f44
-Commit 91b90f44 changed :meth:`SessionContext.read_table` so that any object
-exposing ``__datafusion_table_provider__`` is normalized through
-``Table.from_table_provider_capsule`` before delegating to the Rust context.
-【F:python/datafusion/context.py†L1189-L1198】 That helper now calls into the
-private binding ``df_internal.catalog.RawTable.from_table_provider_capsule`` to
-wrap the capsule, but the ``RawTable`` type exported from
-``datafusion._internal`` does not currently expose such a constructor.
-【F:python/datafusion/catalog.py†L176-L187】 At runtime the lookup therefore
-raises ``AttributeError`` and prevents `examples/pycapsule_failure.py` from
-running, regressing the original reproducer from a segfault into a hard failure.
-
 ## Suggested Tasks
-1. Export a ``RawTable.from_table_provider_capsule`` constructor from the Rust
-   bindings and ensure it becomes available through
-   ``datafusion._internal.catalog`` during the wheel build so that the Python
-   shim can locate it.
-2. Add an integration test that imports ``datafusion._internal`` and asserts
-   ``hasattr(df_internal.catalog.RawTable, "from_table_provider_capsule")``
-   before exercising ``SessionContext.read_table`` with a raw capsule to catch
-   regressions.
-3. Consider extending ``table_provider_from_pycapsule`` so that
-   ``RawTable.__new__`` can directly accept capsule instances (without going
-   through the static helper) to reduce the surface area for Python/Rust API
-   skew in the future.
+1. Provide a public helper (Python or Rust) that fabricates a minimal, but
+   valid, table-provider capsule so that examples/tests no longer rely on
+   ``PyCapsule_New`` with a ``NULL`` destructor.
+2. Document the requirement that all externally supplied table-provider
+   capsules must originate from ``datafusion_ffi`` helpers so the release hook
+   is present; include guidance in ``examples/pycapsule_failure.py``.
+3. Add a regression test that round-trips a capsule produced by the new helper
+   through ``SessionContext.read_table`` to ensure the destructor validation and
+   success path both work as intended.
