@@ -11,5 +11,28 @@ Commit range `9b4f1442^..d629ced2` replaced the `Table` wrapper-based API with a
 
 Prior to the refactor, callers could not pass arbitrary capsule-bearing objects to `SessionContext.read_table`; they first had to wrap them in `Table`/`RawTable`, which were only constructible through safe helpers that produced trusted capsules. The new auto-coercion path therefore widened the attack surface to unvalidated capsules, exposing the latent unsafety.
 
-## Suggested Fixes
-See the Suggested Tasks in the PR review comment for concrete follow-up work.
+## Runtime failure after 91b90f44
+Commit 91b90f44 changed :meth:`SessionContext.read_table` so that any object
+exposing ``__datafusion_table_provider__`` is normalized through
+``Table.from_table_provider_capsule`` before delegating to the Rust context.
+【F:python/datafusion/context.py†L1189-L1198】 That helper now calls into the
+private binding ``df_internal.catalog.RawTable.from_table_provider_capsule`` to
+wrap the capsule, but the ``RawTable`` type exported from
+``datafusion._internal`` does not currently expose such a constructor.
+【F:python/datafusion/catalog.py†L176-L187】 At runtime the lookup therefore
+raises ``AttributeError`` and prevents `examples/pycapsule_failure.py` from
+running, regressing the original reproducer from a segfault into a hard failure.
+
+## Suggested Tasks
+1. Export a ``RawTable.from_table_provider_capsule`` constructor from the Rust
+   bindings and ensure it becomes available through
+   ``datafusion._internal.catalog`` during the wheel build so that the Python
+   shim can locate it.
+2. Add an integration test that imports ``datafusion._internal`` and asserts
+   ``hasattr(df_internal.catalog.RawTable, "from_table_provider_capsule")``
+   before exercising ``SessionContext.read_table`` with a raw capsule to catch
+   regressions.
+3. Consider extending ``table_provider_from_pycapsule`` so that
+   ``RawTable.__new__`` can directly accept capsule instances (without going
+   through the static helper) to reduce the surface area for Python/Rust API
+   skew in the future.
