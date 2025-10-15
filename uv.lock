@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.9"
 resolution-markers = [
     "python_full_version >= '3.12'",
@@ -296,6 +296,7 @@ wheels = [
 name = "datafusion"
 source = { editable = "." }
 dependencies = [
+    { name = "geodatafusion" },
     { name = "pyarrow" },
     { name = "typing-extensions", marker = "python_full_version < '3.13'" },
 ]
@@ -330,6 +331,7 @@ docs = [
 
 [package.metadata]
 requires-dist = [
+    { name = "geodatafusion", specifier = ">=0.1.1" },
     { name = "pyarrow", specifier = ">=11.0.0" },
     { name = "typing-extensions", marker = "python_full_version < '3.13'" },
 ]
@@ -422,6 +424,29 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/0a/10/c23352565a6544bdc5353e0b15fc1c563352101f30e24bf500207a54df9a/filelock-3.18.0.tar.gz", hash = "sha256:adbc88eabb99d2fec8c9c1b229b171f18afa655400173ddc653d5d01501fb9f2", size = 18075, upload-time = "2025-03-14T07:11:40.47Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/4d/36/2a115987e2d8c300a974597416d9de88f2444426de9571f4b59b2cca3acc/filelock-3.18.0-py3-none-any.whl", hash = "sha256:c401f4f8377c4464e6db25fff06205fd89bdd83b65eb0488ed1b160f780e21de", size = 16215, upload-time = "2025-03-14T07:11:39.145Z" },
+]
+
+[[package]]
+name = "geodatafusion"
+version = "0.1.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "datafusion" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/60/3e/9ef4f135437b9eedae73f13b97ef59e96839db906f9e20407c9d5d8ed9bf/geodatafusion-0.1.1-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:5ba50701d4b78abaca14d2d6fb33c234f6494b6f207f2d3e3ab290b756bc55ec", size = 28530074, upload-time = "2025-09-15T05:45:32.659Z" },
+    { url = "https://files.pythonhosted.org/packages/ce/00/1135df86d248cd84df01cd0eca160779839b3ab19f36086448ad9a874f54/geodatafusion-0.1.1-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:de2320b1263f920cd4ba6d6b3529c5530eba4bf528e10ab421559d1c46e28c2c", size = 26274401, upload-time = "2025-09-15T05:45:29.419Z" },
+    { url = "https://files.pythonhosted.org/packages/11/61/3f419848d70c8459cc36e9131199ec7e380ceb0641e3c733041051080c21/geodatafusion-0.1.1-cp39-abi3-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:3ed1be20aaa5f7b05f68c78534db38c15c9dbf617e0ffccc6c4b03631e933080", size = 30155603, upload-time = "2025-09-15T05:45:01.693Z" },
+    { url = "https://files.pythonhosted.org/packages/30/ad/64aada98741467d63ed39b1e0ec9c77fe5cca49adfd1a3ba69a7e7d66947/geodatafusion-0.1.1-cp39-abi3-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:537b2d19a0ba32c8b9ca2289745ff2729f388b6f386c7493f556e92b89d7277e", size = 33762357, upload-time = "2025-09-15T05:45:15.868Z" },
+    { url = "https://files.pythonhosted.org/packages/fb/4e/68afb522171f2eb79ca31a6a5dd02364c9e71fe8abb492804344ce5d7766/geodatafusion-0.1.1-cp39-abi3-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:d9c01cb04644d60f82083667589dca8e5ada3400d16afb5976537c100ae76085", size = 36528469, upload-time = "2025-09-15T05:45:08.755Z" },
+    { url = "https://files.pythonhosted.org/packages/c4/6a/154eb1bb3736f5d22ccf7596a2df9440bed813dcb4188b8efc1e5f415af4/geodatafusion-0.1.1-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:112bae9682f3419a4a5888152cfd0dfb2f4795ab1763c5aa7761f2c31fb92aed", size = 30501886, upload-time = "2025-09-15T05:45:22.645Z" },
+    { url = "https://files.pythonhosted.org/packages/71/3d/b5152e4e24874a10f56d0babb05e277e9695811cac9912e742d3d8ee03ed/geodatafusion-0.1.1-cp39-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:26511e03bf93f7695b3c25e6dac6c8b4a8bc30401a81d4dfa5d63cce15ce6aef", size = 29066422, upload-time = "2025-09-15T05:44:54.794Z" },
+    { url = "https://files.pythonhosted.org/packages/bf/d1/12ea9a604a2ec5df2053bbb1c328e02bd48a623865350e8f7ffd680dd449/geodatafusion-0.1.1-cp39-abi3-win_amd64.whl", hash = "sha256:dbbfaff31d26d28566441d268ca462b4c52a8ce78ad1c180130a7db4c118747e", size = 26681481, upload-time = "2025-09-15T05:45:36.044Z" },
+    { url = "https://files.pythonhosted.org/packages/1b/22/799d268b1f7a9fcd687fc89ce602fa0dc8b6a98d48b633d202d672ed704a/geodatafusion-0.1.1-pp310-pypy310_pp73-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:d20d9d7d6b365df9f790940bc81eee39d85abe924c3df7ff87ab3149c426b984", size = 30144129, upload-time = "2025-09-15T05:45:04.902Z" },
+    { url = "https://files.pythonhosted.org/packages/6a/5d/4e52b6a46e78a49e42aab99b53b8eeb237cf73dd285ca4354114303127b2/geodatafusion-0.1.1-pp310-pypy310_pp73-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:3f9a61e29aceaaaaf8b7b03dfe0c0824e2ab348509d039ea562d7e6936bf8b7c", size = 33757068, upload-time = "2025-09-15T05:45:19.505Z" },
+    { url = "https://files.pythonhosted.org/packages/f7/cf/3fccc3d36db7d695d25d5a279139aad7bafa22fc5eb321ec19f3eb14dbd7/geodatafusion-0.1.1-pp310-pypy310_pp73-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:38274d703c0d403e6b6aadf392c8d39aa31edc114b590b07e8d40c349a5479fe", size = 36521785, upload-time = "2025-09-15T05:45:12.562Z" },
+    { url = "https://files.pythonhosted.org/packages/70/5e/ed2f404e384b6d807ac25bedfee592807ea8f060b5e58b682021d0cbbd7a/geodatafusion-0.1.1-pp310-pypy310_pp73-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:888b2d05a585b2c94846198da5e059ca1f69fc7d2263cbf07cfa7577b577260f", size = 30494275, upload-time = "2025-09-15T05:45:25.963Z" },
+    { url = "https://files.pythonhosted.org/packages/0e/f3/e36350c7b57e7f020f442db77c583e158f7f5287f0de5274aa4240302461/geodatafusion-0.1.1-pp310-pypy310_pp73-manylinux_2_28_aarch64.whl", hash = "sha256:633c604eb2cd400e74ffd4b2321066575715dde0cae0ac716ee419fdcc182bf3", size = 29057512, upload-time = "2025-09-15T05:44:58.311Z" },
 ]
 
 [[package]]
