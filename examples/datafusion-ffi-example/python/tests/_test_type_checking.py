@@ -1,4 +1,7 @@
-from datafusion import SessionContext, udf, udaf
+from datafusion import SessionContext, udaf
 from geodatafusion import native
-ctx = SessionContext()
-ctx.register_udaf(udaf(native.Extent()))
+
+
+def test_udaf_accepts_capsule() -> None:
+    ctx = SessionContext()
+    ctx.register_udaf(udaf(native.Extent()))
