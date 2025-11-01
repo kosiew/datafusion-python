@@ -101,10 +101,7 @@ class ScalarUDFExportable(Protocol):
 
 def _is_pycapsule(value: object) -> TypeGuard[_PyCapsule]:
     """Return ``True`` when ``value`` is a CPython ``PyCapsule``."""
-
-    type_name = type(value).__name__
-    # CPython exposes capsule objects with the type name "capsule"
-    return type_name in {"PyCapsule", "capsule"}
+    return value.__class__.__name__ == "PyCapsule"
 
 
 class ScalarUDF:
