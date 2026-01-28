@@ -122,6 +122,98 @@ jobs:
           uv run --no-project python convert_data_to_parquet.py
           uv run --no-project pytest _tests.py
 
+  test-free-threaded:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - "3.13t"
+          - "3.14t"
+        toolchain:
+          - "stable"
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Verify example datafusion version
+        run: |
+          MAIN_VERSION=$(grep -A 1 "name = \"datafusion-common\"" Cargo.lock | grep "version = " | head -1 | sed 's/.*version = "\(.*\)"/\1/')
+          EXAMPLE_VERSION=$(grep -A 1 "name = \"datafusion-common\"" examples/datafusion-ffi-example/Cargo.lock | grep "version = " | head -1 | sed 's/.*version = "\(.*\)"/\1/')
+          echo "Main crate datafusion version: $MAIN_VERSION"
+          echo "FFI example datafusion version: $EXAMPLE_VERSION"
+          
+          if [ "$MAIN_VERSION" != "$EXAMPLE_VERSION" ]; then
+            echo "❌ Error: FFI example datafusion versions don't match!"
+            exit 1
+          fi
+
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        id: rust-toolchain
+        with:
+          components: clippy,rustfmt
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: '27.4'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Python (free-threaded)
+        uses: actions/setup-python@v6
+        with:
+          # Free-threaded builds are published with the "t" suffix. If these
+          # stop being available via setup-python, fallback to a manual install
+          # (e.g. pyenv) or pin to a supported action version.
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo
+          key: cargo-cache-${{ steps.rust-toolchain.outputs.cachekey }}-${{ hashFiles('Cargo.lock') }}
+
+      - name: Install dependencies and build
+        uses: astral-sh/setup-uv@v7
+        with:
+            enable-cache: true
+
+      - name: Run tests (free-threaded)
+        env:
+          RUST_BACKTRACE: 1
+        run: |
+          git submodule update --init
+          uv sync --dev --no-install-package datafusion
+          uv run --no-project maturin develop --uv
+          uv run --no-project pytest -v .
+
+      - name: FFI unit tests (free-threaded)
+        run: |
+          cd examples/datafusion-ffi-example
+          uv run --no-project maturin develop --uv
+          uv run --no-project pytest python/tests/_test*.py
+
+      - name: Cache the generated dataset
+        id: cache-tpch-dataset
+        uses: actions/cache@v4
+        with:
+          path: benchmarks/tpch/data
+          key: tpch-data-2.18.0
+
+      - name: Run dbgen to create 1 Gb dataset
+        if: ${{ steps.cache-tpch-dataset.outputs.cache-hit != 'true' }}
+        run: |
+          cd benchmarks/tpch
+          RUN_IN_CI=TRUE ./tpch-gen.sh 1
+
+      - name: Run TPC-H examples (free-threaded)
+        run: |
+          cd examples/tpch
+          uv run --no-project python convert_data_to_parquet.py
+          uv run --no-project pytest _tests.py
+
   nightly-fmt:
     runs-on: ubuntu-latest
 
