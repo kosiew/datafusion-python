@@ -143,11 +143,10 @@ jobs:
         with:
             enable-cache: true
 
-      - name: Install build tooling
-        run: uv pip install maturin
-
       - name: Build Python package
-        run: uv run --no-project maturin build --release --strip --features substrait --interpreter python
+        run: |
+          uv sync --dev --no-install-package datafusion
+          uv run --no-project maturin build --release --strip --features substrait --interpreter python
 
       - name: List Windows wheels
         if: matrix.os == 'windows-latest'
@@ -214,11 +213,10 @@ jobs:
         with:
             enable-cache: true
 
-      - name: Install build tooling
-        run: uv pip install maturin
-
       - name: Build Python package
-        run: uv run --no-project maturin build --release --strip --features substrait --interpreter python
+        run: |
+          uv sync --dev --no-install-package datafusion
+          uv run --no-project maturin build --release --strip --features substrait --interpreter python
 
       - name: List Mac wheels
         run: find target/wheels/
