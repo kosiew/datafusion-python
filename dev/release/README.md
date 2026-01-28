@@ -39,6 +39,12 @@ from that branch.
 
 Releases can currently only be created by PMC members due to the permissions needed.
 
+Install the release tooling dependencies (including PyGithub) before running the changelog script:
+
+```bash
+uv sync --dev --group release --no-install-package datafusion
+```
+
 You will need a GitHub Personal Access Token. Follow
 [these instructions](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token)
 to generate one if you do not already have one.

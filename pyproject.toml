@@ -147,8 +147,10 @@ dev = [
     "pytest-asyncio>=0.23.3",
     "ruff>=0.9.1",
     "toml>=0.10.2",
-    "pygithub==2.5.0",
     "codespell==2.4.1",
+]
+release = [
+    "pygithub==2.5.0",
 ]
 docs = [
     "sphinx>=7.1.2",
