@@ -2,6 +2,10 @@
 
 This repository contains Python bindings for Rust's DataFusion.
 
+## Project structure
+- Root split: Rust implementation in `src/` and Python wrappers in `python/datafusion/`.
+- Examples live in `examples/`; use `examples/datafusion-ffi-example/` as a reference for FFI idioms and UDF/UDAF examples.
+
 ## Development workflow
 - Ensure git submodules are initialized: `git submodule update --init`.
 - Build the Rust extension before running tests:
