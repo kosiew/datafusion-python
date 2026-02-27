@@ -20,6 +20,11 @@ This repository contains Python bindings for Rust's DataFusion.
 - Place typing-only imports under `if TYPE_CHECKING:` guards (Ruff rule `TCH001` is enforced).
 - In Rust examples/interop glue, prefer raw C string literals like `cr"..."` for small constants over allocating a `CString`.
 
+## Developer checklist for an edit
+1. Run `uv run --no-project maturin develop --uv` (or `maturin develop --uv` inside the venv).
+2. Run `uv --no-project pytest .` or `python -m pytest python/tests` to validate changes.
+3. Run `pre-commit run --all-files` (or `./ci/scripts/python_lint.sh` and `./ci/scripts/rust_clippy.sh` / `./ci/scripts/rust_fmt.sh` for quick checks).
+
 ## Linting and formatting
 - Use pre-commit for linting/formatting.
 - Run hooks for changed files before committing:
