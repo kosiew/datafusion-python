@@ -6,12 +6,19 @@ This repository contains Python bindings for Rust's DataFusion.
 - Root split: Rust implementation in `src/` and Python wrappers in `python/datafusion/`.
 - Examples live in `examples/`; use `examples/datafusion-ffi-example/` as a reference for FFI idioms and UDF/UDAF examples.
 
-## Development workflow
+## Build / dev / test workflow (essential)
 - Ensure git submodules are initialized: `git submodule update --init`.
-- Build the Rust extension before running tests:
-  - `uv run --no-project maturin develop --uv`
-- Run tests with pytest:
-  - `uv --no-project pytest .`
+- Build the Rust→Python extension with maturin (prefer `uv` tooling):
+  - Local dev build: `uv run --no-project maturin develop --uv` (or `maturin develop --uv` inside a venv)
+- Run tests after building:
+  - `uv --no-project pytest .` or `python -m pytest`
+
+## Project-specific conventions & patterns
+- Use the `maturin` + `pyo3` workflow for building wheels/develop installs; repository `pyproject.toml` contains maturin configuration.
+- Many Python-only helpers and higher-level APIs live in `python/datafusion/` (for example `io.py`, `user_defined.py`, `dataframe_formatter.py`); prefer these helper modules when changing Python surface area.
+- For Rust ↔ Python interop, prefer Arrow C Data Interface / PyCapsule patterns (see `src/pyarrow_util.rs`, `python/datafusion/context.py`, and `docs/source/contributor-guide/ffi.rst`).
+- Place typing-only imports under `if TYPE_CHECKING:` guards (Ruff rule `TCH001` is enforced).
+- In Rust examples/interop glue, prefer raw C string literals like `cr"..."` for small constants over allocating a `CString`.
 
 ## Linting and formatting
 - Use pre-commit for linting/formatting.
@@ -24,7 +31,6 @@ This repository contains Python bindings for Rust's DataFusion.
   - Rust linting via `cargo clippy`
 - Ruff rules that frequently fail in this repo:
   - **Import sorting (`I001`)**: Keep import blocks sorted/grouped. Running `ruff check --select I --fix <files>` will repair order.
-  - **Type-checking guards (`TCH001`)**: Place imports that are only needed for typing (e.g., `AggregateUDF`, `ScalarUDF`, `TableFunction`, `WindowUDF`, `NullTreatment`, `DataFrame`) inside a `if TYPE_CHECKING:` block.
   - **Docstring spacing (`D202`, `D205`)**: The summary line must be separated from the body with exactly one blank line, and there must be no blank line immediately after the closing triple quotes.
   - **Ternary suggestions (`SIM108`)**: Prefer single-line ternary expressions when Ruff requests them over multi-line `if`/`else` assignments.
 
@@ -34,54 +40,13 @@ This repository contains Python bindings for Rust's DataFusion.
 
 ## Rust insights
 
-Below are a set of concise mental-model shifts and expert insights about Rust that are helpful when developing and reviewing the Rust parts of this repository. They emphasize how to think in terms of compile-time guarantees, capabilities, and algebraic composition rather than just language ergonomics.
+Use these as quick mental models when reviewing or editing Rust code in this repo:
 
-1. Ownership → Compile-Time Resource Graph
-
-> Stop seeing ownership as “who frees memory.”
-> See it as a **compile-time dataflow graph of resource control**.
-
-Every `let`, `move`, or `borrow` defines an edge in a graph the compiler statically verifies — ensuring linear usage of scarce resources (files, sockets, locks) **without a runtime GC**. Once you see lifetimes as edges, not annotations, you’re designing **proofs of safety**, not code that merely compiles.
-
-2. Borrowing → Capability Leasing
-
-> Stop thinking of borrowing as “taking a reference.”
-> It’s **temporary permission to mutate or observe**, granted by the compiler’s capability system.
-
-`&mut` isn’t a pointer — it’s a **lease with exclusive rights**, enforced at compile time. Expert code treats borrows as contracts:
-
-* If you can shorten them, you increase parallelism.
-* If you lengthen them, you increase safety scope.
-
-3. Traits → Behavioral Algebra
-
-> Stop viewing traits as “interfaces.”
-> They’re **algebraic building blocks** that define composable laws of behavior.
-
-A `Trait` isn't just a promise of methods; it’s a **contract that can be combined, derived, or blanket-implemented**. Once you realize traits form a behavioral lattice, you stop subclassing and start composing — expressing polymorphism as **capabilities, not hierarchies**.
-
-4. `Result` → Explicit Control Flow as Data
-
-> Stop using `Result` as an error type.
-> It’s **control flow reified as data**.
-
-The `?` operator turns sequential logic into a **monadic pipeline** — your `Result` chain isn’t linear code; it’s a dependency graph of partial successes. Experts design their APIs so every recoverable branch is an **encoded decision**, not a runtime exception.
-
-5. Lifetimes → Static Borrow Slices
-
-> Stop fearing lifetimes as compiler noise.
-> They’re **proofs of local consistency** — mini type-level theorems.
-
-Each `'a` parameter expresses that two pieces of data **coexist safely** within a bounded region of time. Experts deliberately model relationships through lifetime parameters to **eliminate entire classes of runtime checks**.
-
-6. Pattern Matching → Declarative Exhaustiveness
-
-> Stop thinking of `match` as a fancy switch.
-> It’s a **total function over variants**, verified at compile time.
-
-Once you realize `match` isn’t branching but **structural enumeration**, you start writing exhaustive domain models where every possible state is named, and every transition is **type-checked**.
-
-Stop seeing `Option` as “value or no value.” Instead, see it as a lazy computation pipeline that only executes when meaningful. These combinators turn error-handling into data flow: once you think of absence as a first-class transformation, you can write algorithms that never mention control flow explicitly—and yet, they’re 100% safe and analyzable by the compiler.
+- Ownership/borrowing: model values and references as compile-time capability flow; keep borrows as short as practical.
+- Traits: prefer composable capability contracts over inheritance-style thinking.
+- `Result`/`Option`: treat them as explicit control-flow data; use combinators and `?` for clear pipelines.
+- Lifetimes: express valid coexistence windows for references, not just syntax to satisfy the compiler.
+- Pattern matching: model state with enums and exhaustive `match` handling.
 
 
 ## Refactoring opportunities
@@ -102,22 +67,6 @@ Stop seeing `Option` as “value or no value.” Instead, see it as a lazy compu
     Look for call chains that invoke `_import_from_c_capsule` with `__arrow_c_stream__()`
     and prefer `from_stream(df)` instead. This improves readability and avoids
     relying on private PyArrow internals that may change.
-
-  - Prefer Rust raw C-string literals for passing small string constants to
-    Python's C-API or embedding contexts instead of allocating a `CString`.
-
-    Before (allocates a CString and unwraps):
-
-    ```rust
-    let code = CString::new("pass").unwrap();
-    py.run(code.as_c_str(), None, None)?;
-    ```
-
-    After (use a raw C string literal via `cr"..."`):
-
-    ```rust
-    py.run(cr"pass", None, None)?;
-    ```
 
 ## Helper Functions
 
