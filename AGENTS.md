@@ -13,6 +13,16 @@ This repository contains Python bindings for Rust's DataFusion.
 - Run tests after building:
   - `uv --no-project pytest .` or `python -m pytest`
 
+## Engineering principles
+- The code works, and we know it works through tests and validation.
+- Solve the right problem first; avoid premature optimization or unnecessary feature creep.
+- Handle error cases gracefully and predictably, with actionable error messages.
+- Keep implementation simple and minimal; do only what is needed.
+- Code should be well-covered by tests as regression protection.
+- Document behavior and update docs when behavior changes.
+- Design changes to afford future evolution without complexity bloat.
+- Maintain relevant non-functional qualities: reliability, maintainability, security, observability.
+
 ## Project-specific conventions & patterns
 - Use the `maturin` + `pyo3` workflow for building wheels/develop installs; repository `pyproject.toml` contains maturin configuration.
 - Many Python-only helpers and higher-level APIs live in `python/datafusion/` (for example `io.py`, `user_defined.py`, `dataframe_formatter.py`); prefer these helper modules when changing Python surface area.
