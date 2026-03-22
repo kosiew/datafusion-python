@@ -19,6 +19,7 @@ This repository contains Python bindings for Rust's DataFusion.
 - Handle error cases gracefully and predictably, with actionable error messages.
 - Keep implementation simple and minimal; do only what is needed.
 - Code should be well-covered by tests as regression protection.
+- Favor red/green TDD: write failing test first, then implement the minimal fix before refactoring.
 - Document behavior and update docs when behavior changes.
 - Design changes to afford future evolution without complexity bloat.
 - Maintain relevant non-functional qualities: reliability, maintainability, security, observability.
