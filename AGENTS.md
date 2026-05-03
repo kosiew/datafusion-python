@@ -1,9 +1,7 @@
-# AGENTS Instructions
+# AGENTS
 
-This repository contains Python bindings for Rust's DataFusion.
+Repo = Python bindings for Rust DataFusion.
 
-When editing, testing, reviewing, or debugging this repository, use the
-`datafusion-python-development` skill from `~/.pi/agent/skills`.
+Use skill: `~/.pi/agent/skills/datafusion-python-development` for edits/tests/reviews/debug.
 
-Keep this file minimal; reusable workflow, linting, interop, helper API, and
-commenting guidance lives in that skill.
+Keep AGENTS tiny. Reusable workflow/lint/interop/helper/comment rules live in skill.
